@@ -1,0 +1,37 @@
+# Secrets, local configuration and credentials
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.sqlite
+*.sqlite3
+credentials.json
+service-account*.json
+
+# Runtime/user data
+data/
+uploads/
+tmp/
+logs/
+*.log
+
+# Node/TypeScript build files
+node_modules/
+dist/
+build/
+coverage/
+.turbo/
+*.tsbuildinfo
+
+# Editor / OS
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Test / caches
+.nyc_output/
+.cache/
