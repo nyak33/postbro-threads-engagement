@@ -18,7 +18,7 @@ Project setup tracker:
 
 | ID | Component | Owner must obtain/provide securely | Engineering | Verification | Status |
 |---|---|---|---|---|---|
-| S-01 | GitHub | Repository nyak33/postbro-threads-engagement | PRD, checklist, CI | Documentation committed | Docs in progress |
+| S-01 | GitHub | Repository nyak33/postbro-threads-engagement | PRD, checklist, CI | PRD, checklist and env template committed; CI remains pending | Documentation complete; CI pending |
 | S-02 | Meta Threads App | Threads App ID + Threads App Secret + approved redirect | OAuth connector/token refresh | Tester account connected | Not started |
 | S-03 | Threads testers | Account role/invite acceptance | Account selection and scopes check | Both app role and OAuth confirmed | Not started |
 | S-04 | Supabase | Project URL + server-side secret key + DB migration URL | Schema, storage, security | DB queries + bucket test | Not started |
