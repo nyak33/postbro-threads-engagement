@@ -1,7 +1,7 @@
 # PostBro — Integration Setup & Credential Checklist
 
-**Status:** Not configured in this repository. This is a setup specification, not confirmation that credentials or services have been provisioned.  
-**Last reviewed:** 2026-10-15  
+**Status:** PostBro application integrations remain unconfigured/unverified; development Hermes/VPS/GitHub tooling is tracked separately below.  
+**Last reviewed:** 2026-10-21  
 **Source of truth for product scope:** [PRD.md](PRD.md)  
 **Environment name contract:** [../.env.example](../.env.example)
 
@@ -24,9 +24,23 @@ Project setup tracker:
 | S-04 | Supabase | Project URL + server-side secret key + DB migration URL | Schema, storage, security | DB queries + bucket test | Not started |
 | S-05 | Telegram | Bot token + authorised Telegram User ID(s) | Bot, callbacks, menus | Allowed /start and double-click test | Not started |
 | S-06 | Cloud AI | API key + model/provider selection | Provider adapter, budget/timeout | One test generation + scoring | Not started |
-| S-07 | VPS + HTTPS | Host access, domain/tunnel and DNS | Containers, TLS, health, logs | OAuth callback and worker uptime | Not started |
+| S-07 | VPS + HTTPS | Host access, domain/tunnel and DNS | Containers, TLS, health, logs | OAuth callback and worker uptime | VPS development tools provisioned; PostBro deployment/HTTPS NOT started |
 | S-08 | Persona engines | Source repositories (available separately) | Adapt, test, connect to Meta account IDs | Persona test suite + account isolation | Not started |
 | S-09 | Scope-gated features | Meta search/other capabilities as approved | Discovery/outbound implementation | API capability smoke | Blocked until access verified |
+
+
+### Development environment checkpoint (distinct from PostBro application integration)
+
+Recorded from owner-operated Contabo session on 2026-10-20; **not a live check in this PR**:
+
+- Contabo Ubuntu 24.04 VPS: `postbroadmin` user, SSH key authentication and UFW; Git, Docker/Compose, Node.js 24 and Hermes v0.22.2 were installed and tested.
+- Hermes CLI replied `HERMES_OK` using configured Kimi K3 via Rootsys; Hermes **development** Telegram gateway replied `TELEGRAM_OK` and ran `whoami` -> `postbroadmin`.
+- Hermes gateway ran under enabled user systemd service with linger; `approvals.mode=manual` was configured, service restarted and a dangerous chmod probe triggered Telegram approval and was denied.
+- GitHub repository cloned into `/home/postbroadmin/postbro-threads-engagement` using a **read-only** SSH Deploy Key. A dedicated scoped WRITE workflow and GitHub PR creation from the VPS are NOT yet established.
+- **Do not interpret the above as completing S-05 (PostBro product Telegram bot), S-06 (PostBro app's LLM integration) or S-07 (PostBro API/worker public deployment).** A separate PostBro bot, stable HTTPS callback, Supabase, Meta app and live code have not been verified. Never copy Hermes secrets into PostBro environment.
+- Before beginning each development milestone, re-check the relevant live state and record actual evidence, rather than assuming this dated checkpoint remains correct.
+
+See `ARCHITECTURE.md`, `DEVELOPMENT_WORKFLOW.md` and `INTEGRATIONS.md` for module contracts and reviewable process.
 
 ## 1. Meta Threads developer application (S-02 / S-03)
 

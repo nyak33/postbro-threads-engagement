@@ -12,6 +12,18 @@ Standalone, **Threads-only** platform for publishing, scheduling, AI engagement,
 
 If another document, issue, or implementation conflicts with the PRD, update the PRD through a documented decision before changing intended product behaviour.
 
+## Development and review
+
+- [AGENTS.md](AGENTS.md) — mandatory agent contract; agents must explicitly read it at task startup.
+- [Architecture](docs/ARCHITECTURE.md) — proposed module boundaries and safety model.
+- [Implementation plan](docs/IMPLEMENTATION_PLAN.md) — P0/P1/P2 task IDs, dependencies and gates.
+- [Development workflow](docs/DEVELOPMENT_WORKFLOW.md) — owner/ChatGPT/Hermes responsibilities, branch and review process.
+- [Handoff protocol](docs/HANDOFF_PROTOCOL.md) — fixed, concise POSTBRO_HANDOFF_V1 report and PR evidence contract.
+- [Integrations](docs/INTEGRATIONS.md) — secure provider boundaries and verification.
+- [First task specification](docs/tasks/PB-P0-001.md) — proposed scaffold; implementation not started.
+
+Hermes runs separately as the development agent on a VPS and can be contacted via its *development* Telegram bot. This does **not** constitute a PostBro application implementation or provision its own product bot. See `docs/SETUP.md` for separated, evidence-based status.
+
 ## V1 architecture
 
 - **User interface:** Telegram bot with inline approvals and conversational commands; a minimal HTTPS page is used for Threads OAuth.
