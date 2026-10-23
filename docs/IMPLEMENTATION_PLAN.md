@@ -10,8 +10,8 @@ One authorized Threads tester account connects using actual official OAuth; bind
 
 | Phase | Work | Exit gate / evidence | Current status |
 |---|---|---|---|
-| Docs foundation | Agent contract, architecture, handoff, task mapping | Approved documentation PR; does NOT mean CI/app ready | Proposed in foundation PR |
-| P0 | Scaffold + CI; migrations/account isolation; OAuth/token safety; persona binding; bot authentication | Real tester OAuth and verified account/persona authz; deterministic security tests | NOT STARTED |
+| Docs foundation | Agent contract, architecture, handoff, task mapping | Approved documentation PR; does NOT mean app ready | COMPLETE — merged PR #1 |
+| P0 | Scaffold + CI; migrations/account isolation; OAuth/token safety; persona binding; bot authentication | Real tester OAuth and verified account/persona authz; deterministic security tests | IN PROGRESS — PB-P0-001 scaffold + CI merged in PR #2; remaining gates not met |
 | P1A | Draft, preview, publish and durable scheduling | One real confirmed Threads text post; schedule survives restart and no duplicate | NOT STARTED |
 | P1B | Owned reply sync, risk score, persona response, Telegram approval, send/reconcile | Real owned reply -> one confirmed approved response | NOT STARTED |
 | P1C | Capability-aware own-post/account insights | Real supported metrics returned, unsupported ones labelled | NOT STARTED |
@@ -33,13 +33,14 @@ One authorized Threads tester account connects using actual official OAuth; bind
 | PB-P1B-002 | PB-P1B-001 | Confirmed reply executor, idempotency and deny action | Hermes PR + approved reply evidence |
 | PB-P1C-001 | P0 + granted scopes | Basic account/post insights | Hermes PR + real metric examples with redaction |
 
-Small changes may split these tasks after review; do not combine all tasks into one large implementation PR. The first scoped spec is `tasks/PB-P0-001.md`; other task details must be prepared and approved before implementation.
+Small changes may split these tasks after review; do not combine all tasks into one large implementation PR. Scoped specifications: `tasks/PB-P0-001.md` (implementation merged PR #2) and `tasks/PB-P0-002.md` (database foundation specification; implementation NOT STARTED). All later tasks need approved specs before implementation.
 
 ## Pre-implementation dependencies
 
 - **Currently observed in prior operator session:** Contabo VPS with Node/npm/Git/Docker; Hermes Kimi K3 via Rootsys endpoint responded in CLI and Telegram; Hermes Telegram gateway systemd service active and manual command approval denial tested; GitHub repository cloned using read-only deploy key.
-- **Not proven for PostBro application:** new PostBro BotFather bot, Meta Threads app/testers/granted scopes, Supabase project/secret/DB URL, stable HTTPS hostname, PostBro LLM adapter credentials, running app, CI pipeline or schema.
-- **Immediate workflow blocker for Hermes-created PRs:** scoped GitHub **write** access to feature branch. Do not silently promote the existing deploy key; arrange reviewable access with the owner when needed.
+- **Verified in GitHub:** minimum Fastify health-only scaffold and six tests, merged PR #2; Actions CI works and its `lint-typecheck-test` is now a required main-branch status check. No hosted app or database is implied. MIT license/README corrections merged PR #3.
+- **Not proven for PostBro application:** new PostBro BotFather bot, Meta Threads app/testers/granted scopes, Supabase project/secret/DB URL, stable HTTPS hostname, PostBro LLM adapter credentials, running deployed app or database schema.
+- **GitHub Hermes workflow:** Scoped GitHub fine-grained token configured on VPS for the PostBro repository; feature-branch push was tested, and PR #2 was authored through Hermes. Main is protected with PR requirement and required CI check. Keep the token secret and do not assume direct main pushes are allowed.
 - **Do not paste credentials:** `SETUP.md` lists requested key names and verification. Keys must be provisioned through protected on-VPS configuration when the corresponding approved task needs them.
 
 ## Completion criteria for every task
