@@ -29,5 +29,5 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
-      - name: Build and test
+      - name: Build and run unit/database tests
         run: npm test

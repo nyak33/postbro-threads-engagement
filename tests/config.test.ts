@@ -32,3 +32,16 @@ test('parseConfig rejects an invalid PUBLIC_BASE_URL when provided', () => {
     (error: unknown) => error instanceof ConfigError && /PUBLIC_BASE_URL/.test(error.message),
   );
 });
+
+test('parseConfig accepts an optional PostgreSQL DATABASE_URL', () => {
+  const config = parseConfig({ DATABASE_URL: 'postgres://postbro@127.0.0.1:5432/postbro_test' });
+
+  assert.equal(config.databaseUrl, 'postgres://postbro@127.0.0.1:5432/postbro_test');
+});
+
+test('parseConfig rejects a non-PostgreSQL DATABASE_URL', () => {
+  assert.throws(
+    () => parseConfig({ DATABASE_URL: 'https://example.com/not-a-db' }),
+    (error: unknown) => error instanceof ConfigError && /DATABASE_URL/.test(error.message),
+  );
+});

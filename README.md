@@ -20,6 +20,7 @@ If another document, issue, or implementation conflicts with the PRD, update the
 - [Development workflow](docs/DEVELOPMENT_WORKFLOW.md) — owner/ChatGPT/Hermes responsibilities, branch and review process.
 - [Handoff protocol](docs/HANDOFF_PROTOCOL.md) — fixed, concise POSTBRO_HANDOFF_V1 report and PR evidence contract.
 - [Integrations](docs/INTEGRATIONS.md) — secure provider boundaries and verification.
+- [Database foundation runbook](docs/DATABASE.md) — disposable local PostgreSQL migrations, tests, security limits and recovery.
 - [First task specification](docs/tasks/PB-P0-001.md) — backend scaffold implemented and verified in [PR #2](https://github.com/nyak33/postbro-threads-engagement/pull/2); six tests passed in [GitHub Actions](https://github.com/nyak33/postbro-threads-engagement/actions/runs/39912255557/job/120277693442).
 
 Hermes runs separately as the development agent on a VPS and can be contacted via its *development* Telegram bot. This does **not** constitute a PostBro application implementation or provision its own product bot. See `docs/SETUP.md` for separated, evidence-based status.
@@ -53,8 +54,9 @@ Create a safe end-to-end path: connect a developer/tester Threads account → bi
 - Compile TypeScript: `npm run build`
 - Run static checks: `npm run lint` and `npm run typecheck`
 - Run the automated tests: `npm test`
+- Apply migrations to an explicitly provided disposable PostgreSQL database: `DATABASE_URL='postgres://USER:PASSWORD@HOST:5432/DB_NAME' npm run db:migrate`
 
-The PB-P0-001 scaffold validates only the health-slice environment (`NODE_ENV`, `PORT`, `APP_TIMEZONE`, optional `PUBLIC_BASE_URL`). Meta, Telegram, Supabase and LLM values remain placeholders in `.env.example` and are not required to run `GET /health` or the test suite.
+The PB-P0-001 scaffold validates only the health-slice environment (`NODE_ENV`, `PORT`, `APP_TIMEZONE`, optional `PUBLIC_BASE_URL`). PB-P0-002 adds optional `DATABASE_URL` validation; it is loaded only when database commands are invoked and is not required for `GET /health`. Meta, Telegram, Supabase and LLM values remain placeholders in `.env.example`. See [docs/DATABASE.md](docs/DATABASE.md) for the disposable local PostgreSQL test database and migration runbook.
 
 ## License
 
