@@ -2,7 +2,7 @@
 
 Standalone, **Threads-only** platform for publishing, scheduling, AI engagement, discovery, insights, and account-specific persona learning.
 
-> **Project stage:** Specification-first. This repository starts with documentation; no runtime features or integrations are implied by the files here.
+> **Project stage:** P0 foundation in progress. A minimal TypeScript/Fastify API scaffold, `GET /health`, configuration validation, six unit tests and GitHub Actions CI are implemented. Meta Threads OAuth, the PostBro product Telegram bot, Supabase, publishing, scheduling and engagement are **not implemented or verified** yet.
 
 ## Source of truth
 
@@ -20,7 +20,7 @@ If another document, issue, or implementation conflicts with the PRD, update the
 - [Development workflow](docs/DEVELOPMENT_WORKFLOW.md) — owner/ChatGPT/Hermes responsibilities, branch and review process.
 - [Handoff protocol](docs/HANDOFF_PROTOCOL.md) — fixed, concise POSTBRO_HANDOFF_V1 report and PR evidence contract.
 - [Integrations](docs/INTEGRATIONS.md) — secure provider boundaries and verification.
-- [First task specification](docs/tasks/PB-P0-001.md) — proposed scaffold; implementation not started.
+- [First task specification](docs/tasks/PB-P0-001.md) — backend scaffold implemented and verified in [PR #2](https://github.com/nyak33/postbro-threads-engagement/pull/2); six tests passed in [GitHub Actions](https://github.com/nyak33/postbro-threads-engagement/actions/runs/39912255557/job/120277693442).
 
 Hermes runs separately as the development agent on a VPS and can be contacted via its *development* Telegram bot. This does **not** constitute a PostBro application implementation or provision its own product bot. See `docs/SETUP.md` for separated, evidence-based status.
 
@@ -56,6 +56,12 @@ Create a safe end-to-end path: connect a developer/tester Threads account → bi
 
 The PB-P0-001 scaffold validates only the health-slice environment (`NODE_ENV`, `PORT`, `APP_TIMEZONE`, optional `PUBLIC_BASE_URL`). Meta, Telegram, Supabase and LLM values remain placeholders in `.env.example` and are not required to run `GET /health` or the test suite.
 
+## License
+
+PostBro original source code and documentation in this repository are released under the [MIT License](LICENSE), copyright (c) 2026 nyak33 and contributors. Preserve license and copyright notices when redistributing. Third-party dependencies and any future imported code retain their own licenses and must be reviewed before incorporation. The npm package remains marked `private: true` to prevent accidental publication; that setting does not restrict GitHub source reuse under MIT.
+
 ## Status
 
-All requirement checkboxes start **unimplemented / unverified** until work and evidence show otherwise. See the PRD and setup checklist for individual gates.
+- **Complete:** Repository foundation ([PR #1](https://github.com/nyak33/postbro-threads-engagement/pull/1)) and PB-P0-001 Fastify scaffold with six passing CI tests ([PR #2](https://github.com/nyak33/postbro-threads-engagement/pull/2)).
+- **In progress:** Remaining P0 dependencies including Supabase schema, operator/account isolation, real Meta Threads OAuth, persona binding and product Telegram bot.
+- **Not claimed:** Deployed PostBro service, live social publishing, scheduling, engagement or production readiness. See [the PRD](docs/PRD.md), [implementation plan](docs/IMPLEMENTATION_PLAN.md) and [setup checklist](docs/SETUP.md) for acceptance gates. Only explicit test evidence counts as verification.
