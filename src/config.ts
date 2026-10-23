@@ -33,6 +33,15 @@ function isLocalDatabaseHost(hostname: string): boolean {
   return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1';
 }
 
+function hasSslUrlParameters(url: URL): boolean {
+  for (const key of url.searchParams.keys()) {
+    if (key === 'ssl' || key.startsWith('ssl')) {
+      return true;
+    }
+  }
+  return false;
+}
+
 export function parseConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   const issues: string[] = [];
 
@@ -79,6 +88,9 @@ export function parseConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
         if (parsed.port === '6543') {
           issues.push('DATABASE_URL port 6543 is a transaction pooler; use direct/session port 5432 for PostBro migration and persistent runtime connections');
         }
+        if (hasSslUrlParameters(parsed)) {
+          issues.push('SSL URL parameters are not allowed in DATABASE_URL; use DATABASE_SSL_MODE and DATABASE_SSL_CA_PATH so node-postgres URL parameters cannot override TLS verification');
+        }
         databaseHostIsLocal = isLocalDatabaseHost(parsed.hostname);
         databaseUrl = databaseUrlValue;
       }
@@ -92,6 +104,8 @@ export function parseConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   if (databaseSslModeValue) {
     if (!isDatabaseSslMode(databaseSslModeValue)) {
       issues.push('DATABASE_SSL_MODE must be one of: disable, require, verify-ca, verify-full');
+    } else if (databaseUrl && !databaseHostIsLocal && databaseSslModeValue !== 'verify-full') {
+      issues.push('DATABASE_SSL_MODE must be verify-full for non-local hosted PostgreSQL connections');
     } else {
       databaseSslMode = databaseSslModeValue;
     }

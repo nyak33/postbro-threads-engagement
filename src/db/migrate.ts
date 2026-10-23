@@ -72,28 +72,37 @@ async function ledgerEntry(client: PoolClient, version: string): Promise<Migrati
   return result.rows[0] ?? null;
 }
 
+async function planWithExistingLedger(client: PoolClient, migrations: Array<{ version: string; checksum: string }>): Promise<MigrationPlanEntry[]> {
+  const plan: MigrationPlanEntry[] = [];
+  for (const migration of migrations) {
+    const existing = await ledgerEntry(client, migration.version);
+    if (!existing) {
+      plan.push({ version: migration.version, checksum: migration.checksum, status: 'pending' });
+    } else if (!existing.checksum) {
+      throw new Error(`Migration ${migration.version} has a legacy ledger row without checksum; rebuild the disposable DB or reconcile the ledger manually`);
+    } else if (existing.checksum !== migration.checksum) {
+      plan.push({ version: migration.version, checksum: migration.checksum, status: 'modified_after_apply' });
+    } else {
+      plan.push({ version: migration.version, checksum: migration.checksum, status: 'applied' });
+    }
+  }
+  return plan;
+}
+
 export async function planMigrations(db: Pool, migrationsDir: string = DEFAULT_MIGRATIONS_DIR): Promise<MigrationPlanEntry[]> {
+  const migrations = await readMigrationFiles(migrationsDir);
   const client = await db.connect();
   try {
-    await client.query('SELECT pg_advisory_lock($1::bigint)', [MIGRATION_ADVISORY_LOCK_KEY]);
-    await ensureMigrationLedger(client);
-    const migrations = await readMigrationFiles(migrationsDir);
-    const plan: MigrationPlanEntry[] = [];
-    for (const migration of migrations) {
-      const existing = await ledgerEntry(client, migration.version);
-      if (!existing) {
-        plan.push({ version: migration.version, checksum: migration.checksum, status: 'pending' });
-      } else if (!existing.checksum) {
-        throw new Error(`Migration ${migration.version} has a legacy ledger row without checksum; rebuild the disposable DB or reconcile the ledger manually`);
-      } else if (existing.checksum !== migration.checksum) {
-        plan.push({ version: migration.version, checksum: migration.checksum, status: 'modified_after_apply' });
-      } else {
-        plan.push({ version: migration.version, checksum: migration.checksum, status: 'applied' });
-      }
+    const ledger = await client.query<{ regclass: string | null }>(`SELECT to_regclass('postbro.schema_migrations')::text AS regclass`);
+    if (!ledger.rows[0]?.regclass) {
+      return migrations.map((migration) => ({
+        version: migration.version,
+        checksum: migration.checksum,
+        status: 'pending',
+      }));
     }
-    return plan;
+    return await planWithExistingLedger(client, migrations);
   } finally {
-    await client.query('SELECT pg_advisory_unlock($1::bigint)', [MIGRATION_ADVISORY_LOCK_KEY]).catch(() => undefined);
     client.release();
   }
 }
@@ -104,6 +113,7 @@ export async function migrateDatabase(db: Pool, migrationsDir: string = DEFAULT_
 
   try {
     await client.query('SELECT pg_advisory_lock($1::bigint)', [MIGRATION_ADVISORY_LOCK_KEY]);
+    await client.query('BEGIN');
     await ensureMigrationLedger(client);
     const migrations = await readMigrationFiles(migrationsDir);
 
@@ -119,23 +129,20 @@ export async function migrateDatabase(db: Pool, migrationsDir: string = DEFAULT_
         continue;
       }
 
-      try {
-        await client.query('BEGIN');
-        await client.query(migration.sql);
-        await client.query(
-          'INSERT INTO postbro.schema_migrations (version, checksum, applied_by) VALUES ($1, $2, $3)',
-          [migration.version, migration.checksum, 'postbro-migrate'],
-        );
-        await client.query('COMMIT');
-        applied.push(migration.version);
-      } catch (error) {
-        await client.query('ROLLBACK');
-        const message = error instanceof Error ? error.message : 'unknown database error';
-        throw new Error(`Migration ${migration.version} failed: ${message}`);
-      }
+      await client.query(migration.sql);
+      await client.query(
+        'INSERT INTO postbro.schema_migrations (version, checksum, applied_by) VALUES ($1, $2, $3)',
+        [migration.version, migration.checksum, 'postbro-migrate'],
+      );
+      applied.push(migration.version);
     }
 
+    await client.query('COMMIT');
     return applied;
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => undefined);
+    const message = error instanceof Error ? error.message : 'unknown database error';
+    throw new Error(`Migration failed: ${message}`);
   } finally {
     await client.query('SELECT pg_advisory_unlock($1::bigint)', [MIGRATION_ADVISORY_LOCK_KEY]).catch(() => undefined);
     client.release();

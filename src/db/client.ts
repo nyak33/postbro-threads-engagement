@@ -4,15 +4,23 @@ import { Pool, type PoolConfig } from 'pg';
 
 import { type AppConfig, ConfigError, parseConfig } from '../config';
 
-function resolveSslMode(config: AppConfig): NonNullable<AppConfig['databaseSslMode']> {
+function isLocalDatabaseHost(hostname: string): boolean {
+  return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1';
+}
+
+function resolveSslMode(config: AppConfig, hostname: string): NonNullable<AppConfig['databaseSslMode']> {
   if (config.databaseSslMode) {
     return config.databaseSslMode;
   }
-  if (!config.databaseUrl) {
-    return 'disable';
+  return isLocalDatabaseHost(hostname) ? 'disable' : 'verify-full';
+}
+
+function assertNoSslUrlParameters(url: URL): void {
+  for (const key of url.searchParams.keys()) {
+    if (key === 'ssl' || key.startsWith('ssl')) {
+      throw new ConfigError(['SSL URL parameters are not allowed in DATABASE_URL; use DATABASE_SSL_MODE and DATABASE_SSL_CA_PATH']);
+    }
   }
-  const hostname = new URL(config.databaseUrl).hostname;
-  return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1' ? 'disable' : 'verify-full';
 }
 
 export function buildDbPoolOptions(config: AppConfig = parseConfig()): PoolConfig {
@@ -20,37 +28,38 @@ export function buildDbPoolOptions(config: AppConfig = parseConfig()): PoolConfi
     throw new ConfigError(['DATABASE_URL is required only when database operations are invoked']);
   }
 
-  const sslMode = resolveSslMode(config);
+  const parsed = new URL(config.databaseUrl);
+  assertNoSslUrlParameters(parsed);
+  const sslMode = resolveSslMode(config, parsed.hostname);
   const base: PoolConfig = {
-    connectionString: config.databaseUrl,
+    host: parsed.hostname,
+    port: parsed.port ? Number(parsed.port) : 5432,
+    database: parsed.pathname.replace(/^\//, '') || 'postgres',
+    user: decodeURIComponent(parsed.username),
+    password: decodeURIComponent(parsed.password),
     max: 10,
     connectionTimeoutMillis: 5_000,
     idleTimeoutMillis: 10_000,
   };
 
   if (sslMode === 'disable') {
+    if (!isLocalDatabaseHost(parsed.hostname)) {
+      throw new ConfigError(['DATABASE_SSL_MODE must be verify-full for non-local hosted PostgreSQL connections']);
+    }
     return { ...base, ssl: false };
   }
 
-  if (sslMode === 'require') {
+  if (sslMode === 'require' || sslMode === 'verify-ca') {
+    if (!isLocalDatabaseHost(parsed.hostname)) {
+      throw new ConfigError(['DATABASE_SSL_MODE must be verify-full for non-local hosted PostgreSQL connections']);
+    }
     return { ...base, ssl: { rejectUnauthorized: true } };
   }
 
   if (!config.databaseSslCaPath) {
-    throw new ConfigError(['DATABASE_SSL_CA_PATH is required when DATABASE_SSL_MODE is verify-ca or verify-full']);
+    throw new ConfigError(['DATABASE_SSL_CA_PATH is required when DATABASE_SSL_MODE is verify-full']);
   }
   const ca = readFileSync(config.databaseSslCaPath, 'utf8');
-  if (sslMode === 'verify-ca') {
-    return {
-      ...base,
-      ssl: {
-        ca,
-        rejectUnauthorized: true,
-        checkServerIdentity: () => undefined,
-      },
-    };
-  }
-
   return {
     ...base,
     ssl: {

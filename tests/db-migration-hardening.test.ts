@@ -1,11 +1,14 @@
 import assert from 'node:assert/strict';
+import { randomBytes } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { after, before, test } from 'node:test';
 
-import { migrateDatabase, DEFAULT_MIGRATIONS_DIR } from '../src/db/migrate';
-import { startEmbeddedPostgres, type EmbeddedPostgresTestContext } from './helpers/embedded-postgres';
+import { Pool } from 'pg';
+
+import { migrateDatabase, planMigrations, DEFAULT_MIGRATIONS_DIR } from '../src/db/migrate';
+import { connectionStringFor, startEmbeddedPostgres, type EmbeddedPostgresTestContext } from './helpers/embedded-postgres';
 
 let pg: EmbeddedPostgresTestContext;
 let tempDirs: string[];
@@ -55,6 +58,64 @@ test('HC-01/HC-02: migration runner uses one application ledger and verifies che
 
   await fs.appendFile(path.join(dir, '202610230001_hardening_test.sql'), '\n-- modified after apply\n', 'utf8');
   await assert.rejects(migrateDatabase(pg.ownerPool, dir), /checksum mismatch/i);
+});
+
+test('HC-01: db plan is read-only on a virgin database and requires no DDL permission', async () => {
+  const virgin = await startEmbeddedPostgres();
+  const role = 'postbro_plan_test';
+  const password = randomBytes(16).toString('hex');
+  const planPool = new Pool({ connectionString: connectionStringFor(virgin.port, role, password), max: 1 });
+
+  try {
+    const generated = await virgin.ownerPool.query<{ sql: string }>(
+      `SELECT format('CREATE ROLE %I LOGIN PASSWORD %L', $1::text, $2::text) AS sql`,
+      [role, password],
+    );
+    await virgin.ownerPool.query(generated.rows[0]!.sql);
+
+    const before = await virgin.ownerPool.query<{ schema_count: string; ledger: string | null }>(
+      `SELECT
+         (SELECT count(*) FROM pg_namespace WHERE nspname = 'postbro') AS schema_count,
+         to_regclass('postbro.schema_migrations')::text AS ledger`,
+    );
+    const plan = await planMigrations(planPool, DEFAULT_MIGRATIONS_DIR);
+    assert.ok(plan.length >= 1);
+    assert.ok(plan.every((entry) => entry.status === 'pending'));
+
+    const after = await virgin.ownerPool.query<{ schema_count: string; ledger: string | null }>(
+      `SELECT
+         (SELECT count(*) FROM pg_namespace WHERE nspname = 'postbro') AS schema_count,
+         to_regclass('postbro.schema_migrations')::text AS ledger`,
+    );
+    assert.deepEqual(after.rows[0], before.rows[0]);
+    assert.equal(after.rows[0]!.schema_count, '0');
+    assert.equal(after.rows[0]!.ledger, null);
+  } finally {
+    await planPool.end().catch(() => undefined);
+    await virgin.stop();
+  }
+});
+
+test('HC-01: db plan reads an initialized ledger without changing schema inventory', async () => {
+  const dir = await makeMigrationDir(
+    '202610230004_plan_readonly_test.sql',
+    `CREATE TABLE postbro.hardening_plan_readonly_test (id bigint PRIMARY KEY);`,
+  );
+  await migrateDatabase(pg.ownerPool, dir);
+
+  const before = await pg.ownerPool.query<{ ledger_count: string; table_count: string }>(
+    `SELECT
+       (SELECT count(*) FROM postbro.schema_migrations) AS ledger_count,
+       (SELECT count(*) FROM information_schema.tables WHERE table_schema = 'postbro') AS table_count`,
+  );
+  const plan = await planMigrations(pg.ownerPool, dir);
+  assert.deepEqual(plan.map((entry) => entry.status), ['applied']);
+  const after = await pg.ownerPool.query<{ ledger_count: string; table_count: string }>(
+    `SELECT
+       (SELECT count(*) FROM postbro.schema_migrations) AS ledger_count,
+       (SELECT count(*) FROM information_schema.tables WHERE table_schema = 'postbro') AS table_count`,
+  );
+  assert.deepEqual(after.rows[0], before.rows[0]);
 });
 
 test('HC-02: concurrent migration processes are serialized by advisory lock', async () => {

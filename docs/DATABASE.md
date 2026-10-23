@@ -50,7 +50,7 @@ Use only a database you are authorized to reset. Do not use a hosted or populate
 
 ## TLS and network strategy
 
-- Configuration supports `DATABASE_SSL_MODE=disable|require|verify-ca|verify-full` and `DATABASE_SSL_CA_PATH`. Local disposable PostgreSQL uses `disable`; non-local databases default to `verify-full` and require a CA file. The code never sets `rejectUnauthorized:false`.
+- Configuration supports `DATABASE_SSL_MODE=disable|require|verify-ca|verify-full` and `DATABASE_SSL_CA_PATH`, but non-local hosted PostgreSQL connections are policy-limited to `verify-full`; `disable`, `require` and `verify-ca` are rejected outside localhost. Local disposable PostgreSQL uses `disable`. The code rejects `ssl*` URL parameters and builds sanitized host/user/password connection fields instead of passing a connection string alongside TLS settings, so URL parameters cannot override verification. It never sets `rejectUnauthorized:false`.
 - Port 6543 transaction pooler URLs are rejected for PostBro migration/runtime configuration. Use direct port 5432 when verified, otherwise Supavisor session pooler port 5432.
 - Read-only VPS network check on 2026-10-23:
   - `db.nqjlgalyjxifzisitzfa.supabase.co` resolved to IPv6 `2406:da18:1248:be00::6aa6`; the VPS has an IPv6 default route, but a no-auth TCP connect to direct port 5432 timed out.
@@ -70,7 +70,7 @@ Use only a database you are authorized to reset. Do not use a hosted or populate
 - Hashed OAuth state is operator-bound, expiring and single-use.
 - Duplicate engagement provider IDs are rejected within one account but isolated across accounts.
 - Execution attempt action/attempt uniqueness is enforced; provider request/response metadata, job error reasons and audit reason/metadata are recursively redacted before persistence.
-- TLS configuration rejects transaction-pooler port 6543 and unsafe/under-specified hosted SSL settings; `verify-ca` and `verify-full` require a CA file and never disable certificate verification.
+- TLS configuration rejects transaction-pooler port 6543, insecure non-local SSL modes and `ssl*` URL parameters; hosted connections require `verify-full` plus a CA file and use verified TLS fields without `rejectUnauthorized:false`.
 
 ## Deferred PRD entities
 

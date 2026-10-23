@@ -11,7 +11,7 @@
 
 1. Owner explicitly approves the exact migration SHA and target project.
 2. Owner provisions a protected migration `DATABASE_URL` and runtime credential path outside Git/Telegram.
-3. Download the Supabase CA certificate from Database Settings and store it locally with restrictive permissions; set `DATABASE_SSL_MODE=verify-full` and `DATABASE_SSL_CA_PATH`.
+3. Download the Supabase CA certificate from Database Settings and store it locally with restrictive permissions; set `DATABASE_SSL_MODE=verify-full` and `DATABASE_SSL_CA_PATH`. Do not put `sslmode`, `sslrootcert`, `sslcert`, `sslkey` or `ssl` in `DATABASE_URL`; the application rejects those parameters so they cannot override verified TLS.
 4. Re-run read-only network checks from the Contabo VPS:
    - `python3 -c 'import socket; print(socket.getaddrinfo("db.nqjlgalyjxifzisitzfa.supabase.co", 5432, type=socket.SOCK_STREAM))'`
    - `python3 -c 'import socket; s=socket.create_connection(("db.nqjlgalyjxifzisitzfa.supabase.co", 5432), timeout=8); print(s.getpeername()); s.close()'`
@@ -32,7 +32,7 @@
 
 ## Local-vs-hosted gaps that remain unproven
 
-- Hosted PostgreSQL 17.11 vs local embedded PostgreSQL 17.10 rehearsal.
+- Hosted PostgreSQL 17.11 disposable rehearsal: **NOT_RUN** in this PR. Local rehearsal uses pinned embedded PostgreSQL 17.10 because the available npm package does not provide a 17.11 binary; exact 17.11 rehearsal remains a required later owner-approved deployment-gate check.
 - Supabase Auth, PostgREST/Data API exposure defaults, Storage, project settings, SSL enforcement state, backups/PITR, logs, metrics and managed role behavior.
 - Real TLS handshake/CA validation and credentials-based connectivity to the hosted project.
 - Actual runtime login provisioning and password rotation.
