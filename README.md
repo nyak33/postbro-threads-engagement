@@ -45,6 +45,17 @@ Create a safe end-to-end path: connect a developer/tester Threads account → bi
 - Never send production secrets through Telegram conversations, issues, PR comments or AI prompts.
 - Restrict all Telegram actions to an approved user allowlist, and encrypt Threads user access tokens at rest.
 
+## Local development
+
+- Required runtime: Node.js 22 or newer with npm.
+- Install exact locked dependencies: `npm ci`
+- Start the development server: `npm run dev`
+- Compile TypeScript: `npm run build`
+- Run static checks: `npm run lint` and `npm run typecheck`
+- Run the automated tests: `npm test`
+
+The PB-P0-001 scaffold validates only the health-slice environment (`NODE_ENV`, `PORT`, `APP_TIMEZONE`, optional `PUBLIC_BASE_URL`). Meta, Telegram, Supabase and LLM values remain placeholders in `.env.example` and are not required to run `GET /health` or the test suite.
+
 ## Status
 
 All requirement checkboxes start **unimplemented / unverified** until work and evidence show otherwise. See the PRD and setup checklist for individual gates.
