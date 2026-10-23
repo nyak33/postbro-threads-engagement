@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "description": "PostBro Threads automation backend scaffold",
-  "license": "UNLICENSED",
+  "license": "MIT",
   "engines": {
     "node": ">=22"
   },
