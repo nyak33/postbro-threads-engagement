@@ -1,4 +1,5 @@
 export type NodeEnvironment = 'development' | 'test' | 'production';
+export type DatabaseSslMode = 'disable' | 'require' | 'verify-ca' | 'verify-full';
 
 export interface AppConfig {
   nodeEnv: NodeEnvironment;
@@ -6,6 +7,8 @@ export interface AppConfig {
   appTimezone: string;
   publicBaseUrl?: string;
   databaseUrl?: string;
+  databaseSslMode?: DatabaseSslMode;
+  databaseSslCaPath?: string;
 }
 
 export class ConfigError extends Error {
@@ -16,9 +19,18 @@ export class ConfigError extends Error {
 }
 
 const NODE_ENVS = new Set<NodeEnvironment>(['development', 'test', 'production']);
+const DATABASE_SSL_MODES = new Set<DatabaseSslMode>(['disable', 'require', 'verify-ca', 'verify-full']);
 
 function isNodeEnvironment(value: string): value is NodeEnvironment {
   return NODE_ENVS.has(value as NodeEnvironment);
+}
+
+function isDatabaseSslMode(value: string): value is DatabaseSslMode {
+  return DATABASE_SSL_MODES.has(value as DatabaseSslMode);
+}
+
+function isLocalDatabaseHost(hostname: string): boolean {
+  return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1';
 }
 
 export function parseConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
@@ -57,17 +69,43 @@ export function parseConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
 
   const databaseUrlValue = env.DATABASE_URL?.trim();
   let databaseUrl: string | undefined;
+  let databaseHostIsLocal = false;
   if (databaseUrlValue) {
     try {
       const parsed = new URL(databaseUrlValue);
       if (parsed.protocol !== 'postgres:' && parsed.protocol !== 'postgresql:') {
         issues.push('DATABASE_URL must use postgres or postgresql protocol');
       } else {
+        if (parsed.port === '6543') {
+          issues.push('DATABASE_URL port 6543 is a transaction pooler; use direct/session port 5432 for PostBro migration and persistent runtime connections');
+        }
+        databaseHostIsLocal = isLocalDatabaseHost(parsed.hostname);
         databaseUrl = databaseUrlValue;
       }
     } catch {
       issues.push('DATABASE_URL must be a valid PostgreSQL URL');
     }
+  }
+
+  const databaseSslModeValue = env.DATABASE_SSL_MODE?.trim();
+  let databaseSslMode: DatabaseSslMode | undefined;
+  if (databaseSslModeValue) {
+    if (!isDatabaseSslMode(databaseSslModeValue)) {
+      issues.push('DATABASE_SSL_MODE must be one of: disable, require, verify-ca, verify-full');
+    } else {
+      databaseSslMode = databaseSslModeValue;
+    }
+  } else if (databaseUrl) {
+    databaseSslMode = databaseHostIsLocal ? 'disable' : 'verify-full';
+  }
+
+  const databaseSslCaPathValue = env.DATABASE_SSL_CA_PATH?.trim();
+  let databaseSslCaPath: string | undefined;
+  if (databaseSslCaPathValue) {
+    databaseSslCaPath = databaseSslCaPathValue;
+  }
+  if ((databaseSslMode === 'verify-ca' || databaseSslMode === 'verify-full') && !databaseSslCaPath) {
+    issues.push('DATABASE_SSL_CA_PATH is required when DATABASE_SSL_MODE is verify-ca or verify-full');
   }
 
   if (issues.length > 0) {
@@ -80,5 +118,7 @@ export function parseConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     appTimezone,
     ...(publicBaseUrl ? { publicBaseUrl } : {}),
     ...(databaseUrl ? { databaseUrl } : {}),
+    ...(databaseSslMode ? { databaseSslMode } : {}),
+    ...(databaseSslCaPath ? { databaseSslCaPath } : {}),
   };
 }

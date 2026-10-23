@@ -21,7 +21,7 @@ Project setup tracker:
 | S-01 | GitHub | Repository nyak33/postbro-threads-engagement | PRD, checklist, CI | PRD, checklist and env template committed; CI remains pending | Documentation complete; CI pending |
 | S-02 | Meta Threads App | Threads App ID + Threads App Secret + approved redirect | OAuth connector/token refresh | Tester account connected | Not started |
 | S-03 | Threads testers | Account role/invite acceptance | Account selection and scopes check | Both app role and OAuth confirmed | Not started |
-| S-04 | Supabase | Project URL + server-side secret key + DB migration URL | Local schema, migration runner, isolation and concurrency tests | Local disposable PostgreSQL tests pass; hosted DB queries + bucket test | Local PostgreSQL foundation implemented; hosted project NOT configured |
+| S-04 | Supabase | Project URL + server-side secret key + DB migration URL | Local schema, hardened migration runner, least-privilege role plan, TLS/network strategy, isolation and concurrency tests | Local disposable PostgreSQL tests pass; hosted DB queries + bucket test | Local foundation and hosted-readiness hardening implemented; hosted migration NOT configured or run |
 | S-05 | Telegram | Bot token + authorised Telegram User ID(s) | Bot, callbacks, menus | Allowed /start and double-click test | Not started |
 | S-06 | Cloud AI | API key + model/provider selection | Provider adapter, budget/timeout | One test generation + scoring | Not started |
 | S-07 | VPS + HTTPS | Host access, domain/tunnel and DNS | Containers, TLS, health, logs | OAuth callback and worker uptime | VPS development tools provisioned; PostBro deployment/HTTPS NOT started |

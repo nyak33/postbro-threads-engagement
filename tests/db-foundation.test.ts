@@ -37,7 +37,7 @@ interface FoundationFixture {
   personaVersionB: number;
 }
 
-const MIGRATIONS_DIR = path.join(process.cwd(), 'supabase', 'migrations');
+const MIGRATIONS_DIR = path.join(process.cwd(), 'db', 'migrations');
 const REQUIRED_TABLES = [
   'operators',
   'oauth_sessions',
@@ -233,6 +233,28 @@ test('DB-03/DB-06: account authorization is fail-closed and RLS denies non-privi
     assertPgError(error, '42501');
     return true;
   });
+});
+
+test('HC-03: least-privilege runtime role cannot escalate and postbro stays private', async () => {
+  const current = await appPool.query<{ current_user: string }>(`SELECT current_user`);
+  assert.equal(current.rows[0]!.current_user, 'postbro_app_test');
+
+  await assert.rejects(appPool.query(`SET ROLE postgres`), (error: unknown) => {
+    assertPgError(error, '42501');
+    return true;
+  });
+  await assert.rejects(appPool.query(`CREATE TABLE postbro.runtime_escalation_test (id bigint)`), (error: unknown) => {
+    assertPgError(error, '42501');
+    return true;
+  });
+
+  const privileges = await pg.ownerPool.query<{ schema_usage: boolean; table_select: boolean }>(
+    `SELECT
+       has_schema_privilege('postbro_anon', 'postbro', 'USAGE') AS schema_usage,
+       has_table_privilege('postbro_anon', 'postbro.threads_accounts', 'SELECT') AS table_select`,
+  );
+  assert.equal(privileges.rows[0]!.schema_usage, false);
+  assert.equal(privileges.rows[0]!.table_select, false);
 });
 
 test('DB-04: concurrent due-job claims produce exactly one lease and stale workers cannot finalize', async () => {

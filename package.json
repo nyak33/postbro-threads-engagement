@@ -14,7 +14,8 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint . --max-warnings=0",
     "test": "npm run build && node --test dist/tests/*.test.js",
-    "db:migrate": "npm run build && node dist/src/db/migrate-cli.js"
+    "db:migrate": "npm run build && node dist/src/db/migrate-cli.js",
+    "db:plan": "npm run build && node dist/src/db/migrate-cli.js --plan"
   },
   "dependencies": {
     "fastify": "^5.6.1",
