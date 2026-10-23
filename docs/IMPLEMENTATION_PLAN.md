@@ -11,7 +11,7 @@ One authorized Threads tester account connects using actual official OAuth; bind
 | Phase | Work | Exit gate / evidence | Current status |
 |---|---|---|---|
 | Docs foundation | Agent contract, architecture, handoff, task mapping | Approved documentation PR; does NOT mean app ready | COMPLETE — merged PR #1 |
-| P0 | Scaffold + CI; migrations/account isolation; OAuth/token safety; persona binding; bot authentication | Real tester OAuth and verified account/persona authz; deterministic security tests | IN PROGRESS — PB-P0-001 scaffold + CI merged in PR #2; remaining gates not met |
+| P0 | Scaffold + CI; migrations/account isolation; OAuth/token safety; persona binding; bot authentication | Real tester OAuth and verified account/persona authz; deterministic security tests | IN PROGRESS — scaffold/CI merged PR #2; local PostgreSQL foundation merged PR #5 (20 tests), hosted verification/OAuth/bot/persona gates outstanding |
 | P1A | Draft, preview, publish and durable scheduling | One real confirmed Threads text post; schedule survives restart and no duplicate | NOT STARTED |
 | P1B | Owned reply sync, risk score, persona response, Telegram approval, send/reconcile | Real owned reply -> one confirmed approved response | NOT STARTED |
 | P1C | Capability-aware own-post/account insights | Real supported metrics returned, unsupported ones labelled | NOT STARTED |
@@ -23,7 +23,8 @@ One authorized Threads tester account connects using actual official OAuth; bind
 | Task ID | Dependencies | Deliverable and acceptance focus | Owner / evidence |
 |---|---|---|---|
 | PB-P0-001 | Foundation PR approved | TypeScript/Fastify strict scaffold, env validation without secrets, health endpoint, initial unit test and CI | Hermes PR + commands + CI result |
-| PB-P0-002 | PB-P0-001; Supabase project decision | Initial SQL migrations, account-scoped models, safe DB connection and repeatable migration/authorization tests | Hermes PR + DB isolation evidence |
+| PB-P0-002 | PB-P0-001; Supabase project decision | Initial SQL migrations, account-scoped models, safe DB connection and repeatable migration/authorization tests | LOCAL foundation merged PR #5; hosted NOT VERIFIED |
+| PB-P0-002H | PB-P0-002 local; dedicated Supabase project exists | Migration runner hardening, one migration history, role/SSL connectivity plan and safe cloud rehearsal (NO hosted execution) | New specification `tasks/PB-P0-002H.md`; implementation requires separate reviewed PR and owner go-live approval |
 | PB-P0-003 | PB-P0-002; stable HTTPS + Meta tester/app | Secure Threads OAuth, state binding, encrypted token persistence/refresh | Hermes PR + controlled tester evidence |
 | PB-P0-004 | PB-P0-002; separate PostBro bot token | Product Telegram bot allowlist, inline callback authorization, approval state machine | Hermes PR + unauthorized-user tests |
 | PB-P0-005 | PB-P0-002/003; persona repo audit | Persona engine adapter, immutable account binding, per-surface compiler | Hermes PR + cross-account tests |
@@ -33,13 +34,14 @@ One authorized Threads tester account connects using actual official OAuth; bind
 | PB-P1B-002 | PB-P1B-001 | Confirmed reply executor, idempotency and deny action | Hermes PR + approved reply evidence |
 | PB-P1C-001 | P0 + granted scopes | Basic account/post insights | Hermes PR + real metric examples with redaction |
 
-Small changes may split these tasks after review; do not combine all tasks into one large implementation PR. Scoped specifications: `tasks/PB-P0-001.md` (implementation merged PR #2) and `tasks/PB-P0-002.md` (database foundation specification; implementation NOT STARTED). All later tasks need approved specs before implementation.
+Small changes may split these tasks after review; do not combine all tasks into one large implementation PR. Scoped specifications: `tasks/PB-P0-001.md` (merged PR #2), `tasks/PB-P0-002.md` (LOCAL foundation merged PR #5) and `tasks/PB-P0-002H.md` (HOSTED readiness, not implemented; proposal for approval). All later tasks need approved specs before implementation.
 
 ## Pre-implementation dependencies
 
 - **Currently observed in prior operator session:** Contabo VPS with Node/npm/Git/Docker; Hermes Kimi K3 via Rootsys endpoint responded in CLI and Telegram; Hermes Telegram gateway systemd service active and manual command approval denial tested; GitHub repository cloned using read-only deploy key.
-- **Verified in GitHub:** minimum Fastify health-only scaffold and six tests, merged PR #2; Actions CI works and its `lint-typecheck-test` is now a required main-branch status check. No hosted app or database is implied. MIT license/README corrections merged PR #3.
-- **Not proven for PostBro application:** new PostBro BotFather bot, Meta Threads app/testers/granted scopes, Supabase project/secret/DB URL, stable HTTPS hostname, PostBro LLM adapter credentials, running deployed app or database schema.
+- **Verified in GitHub:** Fastify scaffold and CI merged PR #2; MIT license merged PR #3; local PostgreSQL foundation, 14 account-scoped application tables and 20 passing tests merged PR #5. Required `lint-typecheck-test` enforced. No hosted app or database migration implied.
+- **Verified in connected Supabase (2026-10-23, read-only):** dedicated `postbro-core` project in Singapore, active PostgreSQL 17.11, PostBro schema/roles absent, SQL read-only preflight successful; application credentials, hosted migrations, runtime connectivity and Storage unconfigured/unverified.
+- **Not proven for PostBro application:** new PostBro BotFather bot, Meta Threads app/testers/granted scopes, Supabase app secret/DB runtime URL, stable HTTPS hostname, PostBro LLM adapter credentials, running deployed app or hosted PostBro database schema.
 - **GitHub Hermes workflow:** Scoped GitHub fine-grained token configured on VPS for the PostBro repository; feature-branch push was tested, and PR #2 was authored through Hermes. Main is protected with PR requirement and required CI check. Keep the token secret and do not assume direct main pushes are allowed.
 - **Do not paste credentials:** `SETUP.md` lists requested key names and verification. Keys must be provisioned through protected on-VPS configuration when the corresponding approved task needs them.
 
