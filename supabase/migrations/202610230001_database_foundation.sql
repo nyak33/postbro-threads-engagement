@@ -155,7 +155,7 @@ CREATE TABLE postbro.engagement_proposals (
 
 CREATE TABLE postbro.approvals (
   id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-  account_id bigint NOT NULL,
+  account_id bigint NOT NULL REFERENCES postbro.threads_accounts(id) ON DELETE RESTRICT,
   operator_id bigint NOT NULL REFERENCES postbro.operators(id) ON DELETE RESTRICT,
   proposal_id bigint,
   draft_id bigint,
@@ -167,16 +167,18 @@ CREATE TABLE postbro.approvals (
   version integer NOT NULL DEFAULT 1 CHECK (version > 0),
   created_at timestamptz NOT NULL DEFAULT now(),
   UNIQUE (account_id, id),
+  FOREIGN KEY (operator_id, account_id) REFERENCES postbro.operator_accounts(operator_id, account_id) ON DELETE RESTRICT,
   FOREIGN KEY (account_id, proposal_id) REFERENCES postbro.engagement_proposals(account_id, id) ON DELETE RESTRICT,
   FOREIGN KEY (account_id, draft_id) REFERENCES postbro.drafts(account_id, id) ON DELETE RESTRICT,
+  CHECK (proposal_id IS NOT NULL OR draft_id IS NOT NULL),
   CHECK (status = 'pending' OR decided_at IS NOT NULL)
 );
 CREATE UNIQUE INDEX approvals_one_pending_per_action ON postbro.approvals (account_id, action_key) WHERE status = 'pending';
 
 CREATE TABLE postbro.execution_attempts (
   id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-  account_id bigint NOT NULL,
-  job_id bigint,
+  account_id bigint NOT NULL REFERENCES postbro.threads_accounts(id) ON DELETE RESTRICT,
+  job_id bigint NOT NULL,
   action_key text NOT NULL,
   attempt_no integer NOT NULL CHECK (attempt_no > 0),
   outcome text NOT NULL CHECK (outcome IN ('success', 'failed', 'ambiguous', 'needs_reconciliation')),
@@ -197,8 +199,9 @@ CREATE TABLE postbro.audit_events (
   reason text,
   outcome text NOT NULL,
   correlation_id text,
-  metadata jsonb NOT NULL DEFAULT '{}' CHECK (NOT (metadata ?| ARRAY['token', 'access_token', 'refresh_token', 'secret', 'password', 'private_key'])),
-  created_at timestamptz NOT NULL DEFAULT now()
+  metadata jsonb NOT NULL DEFAULT '{}' CHECK (metadata::text !~* '(sb_secret_|github_pat_|ghp_|BEGIN [A-Z ]+PRIVATE KEY|Bearer [A-Za-z0-9._~+/=-]+)'),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  CHECK (reason IS NULL OR reason !~* '(sb_secret_|github_pat_|ghp_|BEGIN [A-Z ]+PRIVATE KEY|Bearer [A-Za-z0-9._~+/=-]+)')
 );
 CREATE INDEX audit_events_account_time ON postbro.audit_events (account_id, created_at);
 

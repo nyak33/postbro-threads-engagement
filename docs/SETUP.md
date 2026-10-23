@@ -33,10 +33,11 @@ Project setup tracker:
 
 Recorded from owner-operated Contabo session on 2026-10-20; **not a live check in this PR**:
 
-- Contabo Ubuntu 24.04 VPS: `postbroadmin` user, SSH key authentication and UFW; Git, Docker/Compose, Node.js 24 and Hermes v0.22.2 were installed and tested.
+- Contabo Ubuntu 24.04 VPS: `postbroadmin` user, SSH key authentication and UFW; Git, Docker/Compose, Node.js and Hermes were installed and tested.
 - Hermes CLI replied `HERMES_OK` using configured Kimi K3 via Rootsys; Hermes **development** Telegram gateway replied `TELEGRAM_OK` and ran `whoami` -> `postbroadmin`.
 - Hermes gateway ran under enabled user systemd service with linger; `approvals.mode=manual` was configured, service restarted and a dangerous chmod probe triggered Telegram approval and was denied.
-- GitHub repository cloned into `/home/postbroadmin/postbro-threads-engagement` using a **read-only** SSH Deploy Key. A dedicated scoped WRITE workflow and GitHub PR creation from the VPS are NOT yet established.
+- GitHub repository cloned into `/home/postbroadmin/postbro-threads-engagement` using the dedicated SSH deploy key for read/synchronization. Scoped GitHub CLI authentication is configured for feature-branch pushes and PR creation; main remains protected and must not be pushed directly.
+- PB-P0-001 scaffold and CI are merged (PR #2). GitHub Actions runs `npm ci`, lint, typecheck and the current test suite on PRs.
 - **Do not interpret the above as completing S-05 (PostBro product Telegram bot), S-06 (PostBro app's LLM integration) or S-07 (PostBro API/worker public deployment).** A separate PostBro bot, stable HTTPS callback, Supabase, Meta app and live code have not been verified. Never copy Hermes secrets into PostBro environment.
 - Before beginning each development milestone, re-check the relevant live state and record actual evidence, rather than assuming this dated checkpoint remains correct.
 
