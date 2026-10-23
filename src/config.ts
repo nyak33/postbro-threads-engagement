@@ -5,6 +5,7 @@ export interface AppConfig {
   port: number;
   appTimezone: string;
   publicBaseUrl?: string;
+  databaseUrl?: string;
 }
 
 export class ConfigError extends Error {
@@ -54,6 +55,21 @@ export function parseConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     }
   }
 
+  const databaseUrlValue = env.DATABASE_URL?.trim();
+  let databaseUrl: string | undefined;
+  if (databaseUrlValue) {
+    try {
+      const parsed = new URL(databaseUrlValue);
+      if (parsed.protocol !== 'postgres:' && parsed.protocol !== 'postgresql:') {
+        issues.push('DATABASE_URL must use postgres or postgresql protocol');
+      } else {
+        databaseUrl = databaseUrlValue;
+      }
+    } catch {
+      issues.push('DATABASE_URL must be a valid PostgreSQL URL');
+    }
+  }
+
   if (issues.length > 0) {
     throw new ConfigError(issues);
   }
@@ -63,5 +79,6 @@ export function parseConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     port,
     appTimezone,
     ...(publicBaseUrl ? { publicBaseUrl } : {}),
+    ...(databaseUrl ? { databaseUrl } : {}),
   };
 }
