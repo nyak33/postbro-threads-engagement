@@ -63,7 +63,13 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Capture pre-first-migration baseline
+        run: bash scripts/ci/pg17-prebaseline.sh
+
       - name: Run PostgreSQL 17.11 deployment rehearsal
         run: npm run test:pg17
         env:
           POSTGRES_17_11_URL: postgres://postgres:postgres@localhost:5432/postgres
+
+      - name: Verify PostBro schema backup and disposable restore
+        run: bash scripts/ci/pg17-backup-restore.sh
