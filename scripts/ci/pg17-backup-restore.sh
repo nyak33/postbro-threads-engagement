@@ -11,12 +11,12 @@ DOCKER=(docker run --rm --add-host=host.docker.internal:host-gateway -e PGPASSWO
 
 test -s "$BACKUP_DIR/postbro-schema.dump"
 
-"${DOCKER[@]}" pg_restore --list /backup/postbro-schema.dump > /backup/postbro-schema.list
+"${DOCKER[@]}" pg_restore --list /backup/postbro-schema.dump > "$BACKUP_DIR/postbro-schema.list"
 grep -q 'SCHEMA - postbro' "$BACKUP_DIR/postbro-schema.list"
 grep -q 'TABLE postbro threads_accounts' "$BACKUP_DIR/postbro-schema.list"
 grep -q 'TABLE postbro schema_migrations' "$BACKUP_DIR/postbro-schema.list"
 
-"${DOCKER[@]}" pg_dumpall --host host.docker.internal --port 5432 --username postgres --roles-only > /backup/postbro-roles.sql
+"${DOCKER[@]}" pg_dumpall --host host.docker.internal --port 5432 --username postgres --roles-only > "$BACKUP_DIR/postbro-roles.sql"
 grep -q 'postbro_app' "$BACKUP_DIR/postbro-roles.sql"
 grep -q 'postbro_anon' "$BACKUP_DIR/postbro-roles.sql"
 

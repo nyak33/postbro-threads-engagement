@@ -19,7 +19,7 @@ docker run --rm \
   --add-host=host.docker.internal:host-gateway \
   -v "$BACKUP_DIR:/backup" \
   "$IMAGE" \
-  pg_restore --list /backup/postbro-prebaseline.dump > /backup/postbro-prebaseline.list
+  pg_restore --list /backup/postbro-prebaseline.dump > "$BACKUP_DIR/postbro-prebaseline.list"
 
 test -s "$BACKUP_DIR/postbro-prebaseline.list"
 if grep -q 'postbro' "$BACKUP_DIR/postbro-prebaseline.list"; then
