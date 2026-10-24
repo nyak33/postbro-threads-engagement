@@ -32,7 +32,7 @@
 
 ## Local-vs-hosted gaps that remain unproven
 
-- Hosted PostgreSQL 17.11 disposable rehearsal: **NOT_RUN** in this PR. Local rehearsal uses pinned embedded PostgreSQL 17.10 because the available npm package does not provide a 17.11 binary; exact 17.11 rehearsal remains a required later owner-approved deployment-gate check.
+- Hosted PostgreSQL 17.11 disposable rehearsal: **PASS via CI job `postgres-17-11-deployment-rehearsal` when that job is green.** The job uses pinned `postgres:17.11@sha256:b8faeff7712663c2773a190181e1246e37e364b887611c04658c28b44e2408fe`; local embedded PostgreSQL 17.10 remains the non-CI developer fallback.
 - Supabase Auth, PostgREST/Data API exposure defaults, Storage, project settings, SSL enforcement state, backups/PITR, logs, metrics and managed role behavior.
 - Real TLS handshake/CA validation and credentials-based connectivity to the hosted project.
 - Actual runtime login provisioning and password rotation.

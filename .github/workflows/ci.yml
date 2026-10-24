@@ -31,3 +31,39 @@ jobs:
 
       - name: Build and run unit/database tests
         run: npm test
+
+  postgres17-rehearsal:
+    name: postgres-17-11-deployment-rehearsal
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17.11@sha256:b8faeff7712663c2773a190181e1246e37e364b887611c04658c28b44e2408fe
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Run PostgreSQL 17.11 deployment rehearsal
+        run: npm run test:pg17
+        env:
+          POSTGRES_17_11_URL: postgres://postgres:postgres@localhost:5432/postgres
