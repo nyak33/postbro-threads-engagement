@@ -1,12 +1,22 @@
-import path from 'node:path';
-
 import { createDbPool } from './client';
-import { migrateDatabase } from './migrate';
+import { DEFAULT_MIGRATIONS_DIR, migrateDatabase, planMigrations } from './migrate';
 
 async function main(): Promise<void> {
+  const planOnly = process.argv.includes('--plan');
   const db = createDbPool();
   try {
-    const applied = await migrateDatabase(db, path.join(process.cwd(), 'supabase', 'migrations'));
+    if (planOnly) {
+      const plan = await planMigrations(db, DEFAULT_MIGRATIONS_DIR);
+      for (const entry of plan) {
+        process.stdout.write(`${entry.status} ${entry.version} ${entry.checksum}\n`);
+      }
+      if (plan.some((entry) => entry.status === 'modified_after_apply')) {
+        process.exit(2);
+      }
+      return;
+    }
+
+    const applied = await migrateDatabase(db, DEFAULT_MIGRATIONS_DIR);
     process.stdout.write(`Applied migrations: ${applied.length > 0 ? applied.join(', ') : 'none'}\n`);
   } finally {
     await db.end();
