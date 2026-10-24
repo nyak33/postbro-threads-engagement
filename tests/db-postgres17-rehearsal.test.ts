@@ -57,7 +57,7 @@ async function createRuntimeRole(owner: Pool, database: string): Promise<Pool> {
   const role = 'postbro_runtime_test';
   const password = randomBytes(16).toString('hex');
   const generated = await owner.query<{ sql: string }>(
-    `SELECT format('DROP ROLE IF EXISTS %I; CREATE ROLE %I LOGIN PASSWORD %L; GRANT postbro_app TO %I;', $1::text, $2::text, $1::text) AS sql`,
+    `SELECT format('DROP ROLE IF EXISTS %I; CREATE ROLE %I LOGIN PASSWORD %L; GRANT postbro_app TO %I;', $1::text, $1::text, $2::text, $1::text) AS sql`,
     [role, password],
   );
   await owner.query(generated.rows[0]!.sql);
