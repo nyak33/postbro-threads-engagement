@@ -41,10 +41,10 @@ pg_dump "$DATABASE_URL" \
   --no-owner
 ```
 
-Do not use `--no-privileges` for the restorable schema backup; grants/ACLs must be preserved and then verified on restore. Record role/grant metadata separately because roles and memberships are cluster-level and passwords are never included:
+Do not use `--no-privileges` for the restorable schema backup; grants/ACLs must be preserved and then verified on restore. Record role/grant metadata separately because roles and memberships are cluster-level and passwords are never included. Use `pg_dumpall --roles-only --no-role-passwords` only where the operator is allowed to export cluster role metadata. Managed Supabase role exports may be restricted; in that case fall back to read-only inventory limited to PostBro role names and memberships (`pg_roles`, `pg_auth_members`) plus manually audited recreation statements. Do not restore Supabase-managed roles wholesale.
 
 ```bash
-pg_dumpall "$DATABASE_URL" --roles-only --file="postbro-roles-$(date -u +%Y%m%dT%H%M%SZ).sql"
+pg_dumpall --dbname="$DATABASE_URL" --roles-only --no-role-passwords --file="postbro-roles-$(date -u +%Y%m%dT%H%M%SZ).sql"
 psql "$DATABASE_URL" -c "SELECT rolname, rolsuper, rolinherit, rolcreaterole, rolcreatedb, rolcanlogin FROM pg_roles WHERE rolname IN ('postbro_app', 'postbro_anon', 'postbro_runtime');"
 psql "$DATABASE_URL" -c "SELECT r.rolname AS member, g.rolname AS member_of FROM pg_auth_members m JOIN pg_roles r ON r.oid=m.member JOIN pg_roles g ON g.oid=m.roleid WHERE r.rolname='postbro_runtime';"
 ```

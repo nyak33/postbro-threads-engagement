@@ -22,7 +22,7 @@
 | Supavisor session pooler connectivity | PASS for read-only TCP | Regional session pooler IPv4 port 5432 connected without credentials. Use session pooler for runtime until direct is proven; never use transaction pooler 6543. |
 | Backup/restore runbook | PASS for documented split + disposable CI rehearsal | `docs/SUPABASE_BACKUP_RESTORE.md`; CI captures pre-first-migration baseline and verifies PostBro schema dump/restore in disposable PostgreSQL 17.11; actual hosted backup/restore NOT_RUN. |
 | Pre-hosted-migration backup verified on target | NOT_RUN | Must be performed immediately before the owner-approved hosted migration using the split baseline procedure; target currently has no `postbro` schema. |
-| Role/grant/ACL restoration | PASS for disposable CI verification; NOT_RUN hosted | CI restores schema with preserved ACLs after roles exist and exports role metadata separately; hosted runtime password/membership restoration remains a protected deployment step. |
+| Role/grant/ACL restoration | PASS for disposable CI verification; NOT_RUN hosted | CI restores schema with preserved ACLs after roles exist and exports role metadata with `pg_dumpall --dbname=... --roles-only --no-role-passwords`; managed Supabase role export restrictions require read-only PostBro-role inventory fallback and manual audited recreation. |
 | Hosted Supabase migration / role creation / permission change | NOT_RUN | Strictly deferred to a separate owner-approved deployment operation. |
 
 ## Deployment readiness decision

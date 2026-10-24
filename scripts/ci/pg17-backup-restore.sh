@@ -16,9 +16,13 @@ grep -q 'SCHEMA - postbro' "$BACKUP_DIR/postbro-schema.list"
 grep -q 'TABLE postbro threads_accounts' "$BACKUP_DIR/postbro-schema.list"
 grep -q 'TABLE postbro schema_migrations' "$BACKUP_DIR/postbro-schema.list"
 
-"${DOCKER[@]}" pg_dumpall --host host.docker.internal --port 5432 --username postgres --roles-only > "$BACKUP_DIR/postbro-roles.sql"
+"${DOCKER[@]}" pg_dumpall --dbname=postgres://postgres:postgres@host.docker.internal:5432/postgres --roles-only --no-role-passwords --file /backup/postbro-roles.sql
 grep -q 'postbro_app' "$BACKUP_DIR/postbro-roles.sql"
 grep -q 'postbro_anon' "$BACKUP_DIR/postbro-roles.sql"
+if grep -Eiq 'password|scram-sha-256|md5' "$BACKUP_DIR/postbro-roles.sql"; then
+  echo 'role export unexpectedly contains password/hash material' >&2
+  exit 1
+fi
 
 "${DOCKER[@]}" createdb --host host.docker.internal --port 5432 --username postgres postbro_restore_test
 "${DOCKER[@]}" pg_restore --host host.docker.internal --port 5432 --username postgres --dbname postbro_restore_test \
