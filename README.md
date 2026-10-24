@@ -22,6 +22,8 @@ If another document, issue, or implementation conflicts with the PRD, update the
 - [Integrations](docs/INTEGRATIONS.md) — secure provider boundaries and verification.
 - [Database foundation runbook](docs/DATABASE.md) — disposable local PostgreSQL migrations, tests, security limits and recovery.
 - [Hosted Supabase readiness plan](docs/SUPABASE_CLOUD_READINESS.md) — target project boundary, TLS/network strategy, deployment prerequisites and rollback limits.
+- [Supabase backup/restore runbook](docs/SUPABASE_BACKUP_RESTORE.md) — Supabase Free logical backup, role metadata and disposable restore verification.
+- [Supabase deployment readiness report](docs/SUPABASE_DEPLOYMENT_READINESS.md) — PASS/FAIL/NOT_RUN gates for the reviewed migration.
 - [First task specification](docs/tasks/PB-P0-001.md) — backend scaffold implemented and verified in [PR #2](https://github.com/nyak33/postbro-threads-engagement/pull/2); six tests passed in [GitHub Actions](https://github.com/nyak33/postbro-threads-engagement/actions/runs/39912255557/job/120277693442).
 
 Hermes runs separately as the development agent on a VPS and can be contacted via its *development* Telegram bot. This does **not** constitute a PostBro application implementation or provision its own product bot. See `docs/SETUP.md` for separated, evidence-based status.
