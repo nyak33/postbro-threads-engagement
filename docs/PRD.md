@@ -182,7 +182,7 @@ Keyword results are **not** guaranteed to be a comprehensive â€œtrending chart.â
 
 | ID | Priority | Requirement | Acceptance criteria |
 |---|---|---|---|
-| PER-01 | P0 | Port existing Persona Engine (Quick/Deep interview, base, context overrides, compilation) | Existing test cases pass after adaptation |
+| PER-01 | P0 | Consume the existing external Persona Engine through a minimal account/persona binding contract | PostBro stores only the binding/reference needed for fail-closed engagement authorization; no second persona-learning system is implemented |
 | PER-02 | P0 | Verified account -> persona binding; keep separate active versions and preferences | Fail closed on no binding/disconnection |
 | PER-03 | P1 | Apply surface-specific guidance to post vs reply generation | Identical account can have distinct post/reply styles |
 | PER-04 | P2 | Import accessible **account-owned** historical posts/replies with provenance and authorship tags | User reviews proposed initial persona; no unsupported API access or unconsented third-party history ingestion |

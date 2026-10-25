@@ -80,6 +80,8 @@ Deferred until their own scoped tasks: `posts` as separate published-post histor
 
 ## Migration failure recovery
 
+This engagement-only correction intentionally rewrites the pre-first-hosted-migration foundation file. Any local/disposable database initialized from the earlier posting/scheduling foundation must be destroyed and recreated; the application runner will fail checksum validation by design rather than upgrading that obsolete local schema. Hosted `postbro-core` had no `postbro` schema before this correction, so no hosted forward migration is required or authorized.
+
 - Test database: stop the test process; the harness uses a temporary directory and removes it after the run. Re-run `npm test` for a clean cluster.
 - Manual disposable database: stop the database, delete/recreate the disposable cluster or database, then re-run `npm run db:migrate` from the clean state.
 - Rollback for this foundation is destructive (`DROP SCHEMA postbro CASCADE`) and is **not** automated or approved for hosted/populated data. Any cloud migration or rollback requires separate owner approval, backup and rollback plan.

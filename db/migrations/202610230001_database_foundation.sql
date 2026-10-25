@@ -118,30 +118,6 @@ CREATE TABLE postbro.engagement_proposals (
   FOREIGN KEY (account_id, event_id) REFERENCES postbro.engagement_events(account_id, id) ON DELETE RESTRICT
 );
 
-CREATE TABLE postbro.engagement_jobs (
-  id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-  account_id bigint NOT NULL,
-  proposal_id bigint NOT NULL,
-  action_key text NOT NULL,
-  next_attempt_at timestamptz NOT NULL DEFAULT now(),
-  status text NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'claimed', 'processing', 'confirmed', 'failed', 'needs_reconciliation', 'cancelled')),
-  claimed_by text,
-  lease_token text,
-  lease_expires_at timestamptz,
-  attempts integer NOT NULL DEFAULT 0 CHECK (attempts >= 0),
-  last_error text,
-  created_at timestamptz NOT NULL DEFAULT now(),
-  updated_at timestamptz NOT NULL DEFAULT now(),
-  UNIQUE (account_id, id),
-  UNIQUE (account_id, action_key),
-  FOREIGN KEY (account_id, proposal_id) REFERENCES postbro.engagement_proposals(account_id, id) ON DELETE RESTRICT,
-  CHECK (
-    (status IN ('claimed', 'processing') AND claimed_by IS NOT NULL AND lease_token IS NOT NULL AND lease_expires_at IS NOT NULL)
-    OR (status NOT IN ('claimed', 'processing') AND claimed_by IS NULL AND lease_token IS NULL AND lease_expires_at IS NULL)
-  )
-);
-CREATE INDEX engagement_jobs_claimable ON postbro.engagement_jobs (status, next_attempt_at, id);
-
 CREATE TABLE postbro.approvals (
   id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   account_id bigint NOT NULL REFERENCES postbro.threads_accounts(id) ON DELETE RESTRICT,
@@ -160,6 +136,36 @@ CREATE TABLE postbro.approvals (
   CHECK (status = 'pending' OR decided_at IS NOT NULL)
 );
 CREATE UNIQUE INDEX approvals_one_pending_per_action ON postbro.approvals (account_id, action_key) WHERE status = 'pending';
+CREATE UNIQUE INDEX approvals_identity_action_version ON postbro.approvals (account_id, id, operator_id, proposal_id, action_key, version);
+
+CREATE TABLE postbro.engagement_jobs (
+  id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  account_id bigint NOT NULL,
+  operator_id bigint NOT NULL,
+  proposal_id bigint NOT NULL,
+  approval_id bigint NOT NULL,
+  action_key text NOT NULL,
+  proposal_version integer NOT NULL CHECK (proposal_version > 0),
+  next_attempt_at timestamptz NOT NULL DEFAULT now(),
+  status text NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'claimed', 'processing', 'confirmed', 'failed', 'needs_reconciliation', 'cancelled')),
+  claimed_by text,
+  lease_token text,
+  lease_expires_at timestamptz,
+  attempts integer NOT NULL DEFAULT 0 CHECK (attempts >= 0),
+  last_error text,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (account_id, id),
+  UNIQUE (account_id, action_key),
+  FOREIGN KEY (account_id, proposal_id) REFERENCES postbro.engagement_proposals(account_id, id) ON DELETE RESTRICT,
+  FOREIGN KEY (account_id, approval_id, operator_id, proposal_id, action_key, proposal_version)
+    REFERENCES postbro.approvals(account_id, id, operator_id, proposal_id, action_key, version) ON DELETE RESTRICT,
+  CHECK (
+    (status IN ('claimed', 'processing') AND claimed_by IS NOT NULL AND lease_token IS NOT NULL AND lease_expires_at IS NOT NULL)
+    OR (status NOT IN ('claimed', 'processing') AND claimed_by IS NULL AND lease_token IS NULL AND lease_expires_at IS NULL)
+  )
+);
+CREATE INDEX engagement_jobs_claimable ON postbro.engagement_jobs (status, next_attempt_at, id);
 
 CREATE TABLE postbro.execution_attempts (
   id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,

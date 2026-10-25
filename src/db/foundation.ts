@@ -18,6 +18,37 @@ export interface ClaimedEngagementJob {
   attempts: number;
 }
 
+const ENGAGEMENT_JOB_AUTHZ_SQL = `
+  AND EXISTS (
+    SELECT 1
+    FROM postbro.approvals a
+    JOIN postbro.operators o
+      ON o.id = a.operator_id
+     AND o.status = 'active'
+    JOIN postbro.operator_accounts oa
+      ON oa.operator_id = o.id
+     AND oa.account_id = a.account_id
+    JOIN postbro.threads_accounts ta
+      ON ta.id = a.account_id
+     AND ta.status = 'active'
+    JOIN postbro.persona_bindings pb
+      ON pb.account_id = ta.id
+     AND pb.status = 'active'
+    JOIN postbro.engagement_proposals ep
+      ON ep.account_id = a.account_id
+     AND ep.id = a.proposal_id
+     AND ep.version = a.version
+     AND ep.status IN ('pending', 'approved')
+    WHERE a.account_id = ej.account_id
+      AND a.id = ej.approval_id
+      AND a.proposal_id = ej.proposal_id
+      AND a.action_key = ej.action_key
+      AND a.version = ej.proposal_version
+      AND a.action_type = 'engagement_reply'
+      AND a.status = 'approved'
+      AND a.decided_at IS NOT NULL
+  )`;
+
 export interface RecordAuditEventInput {
   operatorId: number | null;
   accountId: number;
@@ -123,38 +154,60 @@ export async function claimDueEngagementJob(pool: Pool, accountId: number, worke
       [accountId],
     );
 
+    const candidate = await client.query<{ id: string; operator_id: string }>(
+      `SELECT p2.id, p2.operator_id
+       FROM postbro.engagement_jobs p2
+       WHERE p2.account_id = $1::bigint
+         AND (
+           (p2.status = 'pending' AND p2.next_attempt_at <= now())
+           OR (
+             p2.status IN ('claimed', 'processing')
+             AND p2.lease_expires_at <= now()
+             AND NOT EXISTS (
+               SELECT 1
+               FROM postbro.execution_attempts ea
+               WHERE ea.account_id = p2.account_id
+                 AND ea.engagement_job_id = p2.id
+             )
+           )
+         )
+       ORDER BY COALESCE(p2.lease_expires_at, p2.next_attempt_at), p2.id
+       LIMIT 1
+       FOR UPDATE SKIP LOCKED`,
+      [accountId],
+    );
+    const candidateRow = candidate.rows[0];
+    if (!candidateRow) {
+      return null;
+    }
+
+    await setRlsContext(client, Number(candidateRow.operator_id), accountId);
     const result = await client.query<{ id: string; attempts: number }>(
       `UPDATE postbro.engagement_jobs ej
        SET status = 'claimed',
-           claimed_by = $2,
-           lease_token = $3,
+           claimed_by = $3,
+           lease_token = $4,
            lease_expires_at = now() + interval '5 minutes',
            attempts = ej.attempts + 1,
            updated_at = now()
        WHERE ej.account_id = $1::bigint
-         AND ej.id = (
-           SELECT p2.id
-           FROM postbro.engagement_jobs p2
-           WHERE p2.account_id = $1::bigint
-             AND (
-               (p2.status = 'pending' AND p2.next_attempt_at <= now())
-               OR (
-                 p2.status IN ('claimed', 'processing')
-                 AND p2.lease_expires_at <= now()
-                 AND NOT EXISTS (
-                   SELECT 1
-                   FROM postbro.execution_attempts ea
-                   WHERE ea.account_id = p2.account_id
-                     AND ea.engagement_job_id = p2.id
-                 )
-               )
+         AND ej.id = $2::bigint
+         AND (
+           (ej.status = 'pending' AND ej.next_attempt_at <= now())
+           OR (
+             ej.status IN ('claimed', 'processing')
+             AND ej.lease_expires_at <= now()
+             AND NOT EXISTS (
+               SELECT 1
+               FROM postbro.execution_attempts ea
+               WHERE ea.account_id = ej.account_id
+                 AND ea.engagement_job_id = ej.id
              )
-           ORDER BY COALESCE(p2.lease_expires_at, p2.next_attempt_at), p2.id
-           LIMIT 1
-           FOR UPDATE SKIP LOCKED
+           )
          )
+         ${ENGAGEMENT_JOB_AUTHZ_SQL}
        RETURNING ej.id, ej.attempts`,
-      [accountId, workerId, leaseToken],
+      [accountId, candidateRow.id, workerId, leaseToken],
     );
 
     const row = result.rows[0];
@@ -249,8 +302,8 @@ export async function createApprovedEngagementJob(
 ): Promise<number | null> {
   return withRlsContext(pool, operatorId, accountId, async (client) => {
     const result = await client.query<{ id: string }>(
-      `INSERT INTO postbro.engagement_jobs (account_id, proposal_id, action_key, status, next_attempt_at)
-       SELECT a.account_id, a.proposal_id, a.action_key, 'pending', now()
+      `INSERT INTO postbro.engagement_jobs (account_id, operator_id, proposal_id, approval_id, action_key, proposal_version, status, next_attempt_at)
+       SELECT a.account_id, a.operator_id, a.proposal_id, a.id, a.action_key, a.version, 'pending', now()
        FROM postbro.approvals a
        JOIN postbro.operators o
          ON o.id = a.operator_id

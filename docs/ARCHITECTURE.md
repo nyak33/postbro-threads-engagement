@@ -63,7 +63,7 @@ src/
   workers/             # durable jobs; explicit ownership of retries
   shared/              # types, errors, config validation, observability
 tests/
-supabase/migrations/
+db/migrations/
 docker/
 ~~~
 

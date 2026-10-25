@@ -93,14 +93,44 @@ async function createEngagementProposal(accountId: number, actionKey: string, st
   return Number(proposal.rows[0]!.id);
 }
 
-async function createEngagementJob(accountId: number, actionKey: string, nextAttemptAt = new Date(Date.now() - 1000)): Promise<number> {
+async function createEngagementJob(accountId: number, operatorId: number, actionKey: string, nextAttemptAt = new Date(Date.now() - 1000)): Promise<number> {
   const proposalId = await createEngagementProposal(accountId, actionKey);
-  const result = await pg.ownerPool.query<{ id: string }>(
-    `INSERT INTO postbro.engagement_jobs (account_id, proposal_id, action_key, next_attempt_at, status)
-     VALUES ($1, $2, $3, $4, 'pending') RETURNING id`,
-    [accountId, proposalId, actionKey, nextAttemptAt],
+  const approval = await pg.ownerPool.query<{ id: string }>(
+    `INSERT INTO postbro.approvals (account_id, operator_id, proposal_id, action_key, action_type, status, expires_at, version)
+     VALUES ($1, $2, $3, $4, 'engagement_reply', 'pending', now() + interval '5 minutes', 1) RETURNING id`,
+    [accountId, operatorId, proposalId, actionKey],
   );
-  return Number(result.rows[0]!.id);
+  const approvalId = Number(approval.rows[0]!.id);
+  assert.equal(await approveApproval(appPool, operatorId, accountId, approvalId), true);
+  const jobId = await createApprovedEngagementJob(appPool, operatorId, accountId, approvalId);
+  assert.ok(jobId, 'approved current proposal must create an engagement job');
+  if (nextAttemptAt.getTime() > Date.now()) {
+    await pg.ownerPool.query(`UPDATE postbro.engagement_jobs SET next_attempt_at = $2 WHERE id = $1`, [jobId, nextAttemptAt]);
+  }
+  return jobId;
+}
+
+async function insertEngagementJobDirectApp(accountId: number, operatorId: number, actionKey: string): Promise<number> {
+  const proposalId = await createEngagementProposal(accountId, actionKey);
+  const approval = await pg.ownerPool.query<{ id: string }>(
+    `INSERT INTO postbro.approvals (account_id, operator_id, proposal_id, action_key, action_type, status, expires_at, version)
+     VALUES ($1, $2, $3, $4, 'engagement_reply', 'pending', now() + interval '5 minutes', 1) RETURNING id`,
+    [accountId, operatorId, proposalId, actionKey],
+  );
+  const client = await appPool.connect();
+  try {
+    await client.query('BEGIN');
+    await setRlsContext(client, operatorId, accountId);
+    const result = await client.query<{ id: string }>(
+      `INSERT INTO postbro.engagement_jobs (account_id, operator_id, proposal_id, approval_id, action_key, proposal_version, status, next_attempt_at)
+       VALUES ($1, $2, $3, $4, $5, 1, 'pending', now() - interval '1 second') RETURNING id`,
+      [accountId, operatorId, proposalId, Number(approval.rows[0]!.id), actionKey],
+    );
+    await client.query('COMMIT');
+    return Number(result.rows[0]!.id);
+  } finally {
+    client.release();
+  }
 }
 
 async function createPendingApproval(accountId: number, operatorId: number, actionKey: string, expiresAt = new Date(Date.now() + 60_000)): Promise<number> {
@@ -255,7 +285,7 @@ test('HC-03: least-privilege runtime role cannot escalate and postbro stays priv
 });
 
 test('DB-04: concurrent due-job claims produce exactly one lease and stale workers cannot finalize', async () => {
-  const jobId = await createEngagementJob(fixture.accountA, `engagement-${randomUUID()}`);
+  const jobId = await createEngagementJob(fixture.accountA, fixture.operatorOne, `engagement-${randomUUID()}`);
   const claims = await Promise.all(
     Array.from({ length: 6 }, (_, index) => claimDueEngagementJob(appPool, fixture.accountA, `worker-${index}`)),
   );
@@ -272,7 +302,7 @@ test('DB-04: concurrent due-job claims produce exactly one lease and stale worke
 
 test('DB-04/DB-05: ambiguous engagement outcome becomes needs_reconciliation and is not auto-claimed or duplicated', async () => {
   const actionKey = `ambiguous-${randomUUID()}`;
-  const jobId = await createEngagementJob(fixture.accountA, actionKey);
+  const jobId = await createEngagementJob(fixture.accountA, fixture.operatorOne, actionKey);
   const claim = await claimDueEngagementJob(appPool, fixture.accountA, 'worker-ambiguous');
   assert.ok(claim);
   assert.equal(claim?.id, jobId);
@@ -281,7 +311,7 @@ test('DB-04/DB-05: ambiguous engagement outcome becomes needs_reconciliation and
   assert.equal(await markEngagementJobNeedsReconciliation(appPool, fixture.accountA, jobId, claim!.leaseToken, 'timeout'), true);
   assert.equal(await claimDueEngagementJob(appPool, fixture.accountA, 'worker-retry'), null);
 
-  await assert.rejects(createEngagementJob(fixture.accountA, actionKey), (error: unknown) => {
+  await assert.rejects(createEngagementJob(fixture.accountA, fixture.operatorOne, actionKey), (error: unknown) => {
     assertPgError(error, '23505');
     return true;
   });
@@ -341,6 +371,22 @@ test('DB-04/DB-05: only an approved current engagement approval can queue reply 
   assert.equal(await createApprovedEngagementJob(appPool, fixture.operatorOne, fixture.accountA, staleApproval), null);
 });
 
+test('DB-04/DB-06: app role cannot execute direct unapproved, stale or revoked engagement jobs', async () => {
+  const directJobId = await insertEngagementJobDirectApp(fixture.accountA, fixture.operatorOne, `direct-unapproved-${randomUUID()}`);
+  assert.equal(await claimDueEngagementJob(appPool, fixture.accountA, 'worker-direct-unapproved'), null);
+  await pg.ownerPool.query(`UPDATE postbro.engagement_jobs SET status = 'cancelled', updated_at = now() WHERE id = $1`, [directJobId]);
+
+  const revokedJobId = await createEngagementJob(fixture.accountA, fixture.operatorOne, `revoked-${randomUUID()}`);
+  await pg.ownerPool.query(
+    `UPDATE postbro.engagement_proposals
+     SET status = 'superseded', updated_at = now()
+     WHERE id = (SELECT proposal_id FROM postbro.engagement_jobs WHERE id = $1)`,
+    [revokedJobId],
+  );
+  assert.equal(await claimDueEngagementJob(appPool, fixture.accountA, 'worker-revoked'), null);
+  await pg.ownerPool.query(`UPDATE postbro.engagement_jobs SET status = 'cancelled', updated_at = now() WHERE id = $1`, [revokedJobId]);
+});
+
 test('DB-06: hashed OAuth state is operator-bound, expiring and single-use', async () => {
   const stateHash = randomBytes(32);
   const expiredHash = randomBytes(32);
@@ -356,7 +402,7 @@ test('DB-06: hashed OAuth state is operator-bound, expiring and single-use', asy
 });
 
 test('DB-05/DB-08: execution attempts deduplicate action attempts and audit records avoid sensitive payloads', async () => {
-  const jobId = await createEngagementJob(fixture.accountA, `attempt-${randomUUID()}`, new Date(Date.now() + 60_000));
+  const jobId = await createEngagementJob(fixture.accountA, fixture.operatorOne, `attempt-${randomUUID()}`, new Date(Date.now() + 60_000));
   const attempt = await recordExecutionAttempt(appPool, fixture.accountA, jobId, 'action-attempt-1', 1, 'ambiguous', { redacted: true });
   assert.ok(attempt > 0);
 
@@ -405,7 +451,7 @@ test('DB-03/DB-04 regression: approval action boundary revalidates authorization
 });
 
 test('DB-04 regression: expired job leases recover safely and stale or cross-account workers are denied', async () => {
-  const jobId = await createEngagementJob(fixture.accountA, `lease-${randomUUID()}`);
+  const jobId = await createEngagementJob(fixture.accountA, fixture.operatorOne, `lease-${randomUUID()}`);
   const first = await claimDueEngagementJob(appPool, fixture.accountA, 'worker-a');
   assert.ok(first);
   await pg.ownerPool.query(`UPDATE postbro.engagement_jobs SET lease_expires_at = now() - interval '1 second', updated_at = now() WHERE id = $1`, [jobId]);
@@ -417,7 +463,7 @@ test('DB-04 regression: expired job leases recover safely and stale or cross-acc
   assert.equal(await completeClaimedEngagementJob(appPool, fixture.accountA, jobId, first!.leaseToken, 'confirmed'), false);
   assert.equal(await completeClaimedEngagementJob(appPool, fixture.accountA, jobId, second!.leaseToken, 'confirmed'), true);
 
-  const ambiguousJobId = await createEngagementJob(fixture.accountA, `lease-ambiguous-${randomUUID()}`);
+  const ambiguousJobId = await createEngagementJob(fixture.accountA, fixture.operatorOne, `lease-ambiguous-${randomUUID()}`);
   const ambiguousClaim = await claimDueEngagementJob(appPool, fixture.accountA, 'worker-ambiguous-lease');
   assert.ok(ambiguousClaim);
   await recordExecutionAttempt(appPool, fixture.accountA, ambiguousJobId, `lease-ambiguous-attempt-${randomUUID()}`, 1, 'ambiguous', { status: 'timeout' });
@@ -426,7 +472,8 @@ test('DB-04 regression: expired job leases recover safely and stale or cross-acc
   const ambiguousStatus = await pg.ownerPool.query<{ status: string }>(`SELECT status FROM postbro.engagement_jobs WHERE id = $1`, [ambiguousJobId]);
   assert.equal(ambiguousStatus.rows[0]!.status, 'needs_reconciliation');
 
-  const crossAccountJobId = await createEngagementJob(fixture.accountB, `cross-account-${randomUUID()}`);
+  await pg.ownerPool.query(`INSERT INTO postbro.persona_bindings (account_id, persona_version_id, status) VALUES ($1, $2, 'active')`, [fixture.accountB, fixture.personaVersionB]);
+  const crossAccountJobId = await createEngagementJob(fixture.accountB, fixture.operatorTwo, `cross-account-${randomUUID()}`);
   assert.equal(await claimDueEngagementJob(appPool, fixture.accountA, 'worker-cross-account'), null);
   const crossAccountClaim = await claimDueEngagementJob(appPool, fixture.accountB, 'worker-b');
   assert.equal(crossAccountClaim?.id, crossAccountJobId);
@@ -484,7 +531,7 @@ test('DB-02/DB-03 regression: approvals and execution attempts enforce account/s
     },
   );
 
-  const jobA = await createEngagementJob(fixture.accountA, `attempt-integrity-${randomUUID()}`, new Date(Date.now() + 60_000));
+  const jobA = await createEngagementJob(fixture.accountA, fixture.operatorOne, `attempt-integrity-${randomUUID()}`, new Date(Date.now() + 60_000));
   await assert.rejects(
     pg.ownerPool.query(
       `INSERT INTO postbro.execution_attempts (account_id, engagement_job_id, action_key, attempt_no, outcome)
@@ -499,7 +546,7 @@ test('DB-02/DB-03 regression: approvals and execution attempts enforce account/s
 });
 
 test('DB-08 regression: provider payloads, errors and audit metadata are recursively redacted before persistence', async () => {
-  const jobId = await createEngagementJob(fixture.accountA, `redaction-${randomUUID()}`);
+  const jobId = await createEngagementJob(fixture.accountA, fixture.operatorOne, `redaction-${randomUUID()}`);
   const claim = await claimDueEngagementJob(appPool, fixture.accountA, 'worker-redaction');
   assert.ok(claim);
   assert.equal(
