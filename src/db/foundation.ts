@@ -12,7 +12,7 @@ export interface AuthorizedAccount {
   scopes: string[];
 }
 
-export interface ClaimedJob {
+export interface ClaimedEngagementJob {
   id: number;
   leaseToken: string;
   attempts: number;
@@ -100,44 +100,44 @@ export async function getAuthorizedAccount(
   });
 }
 
-export async function claimDueJob(pool: Pool, accountId: number, workerId: string): Promise<ClaimedJob | null> {
+export async function claimDueEngagementJob(pool: Pool, accountId: number, workerId: string): Promise<ClaimedEngagementJob | null> {
   const leaseToken = randomUUID();
   return withRlsContext(pool, 0, accountId, async (client) => {
     await client.query(
-      `UPDATE postbro.publish_jobs pj
+      `UPDATE postbro.engagement_jobs ej
        SET status = 'needs_reconciliation',
            claimed_by = NULL,
            lease_token = NULL,
            lease_expires_at = NULL,
            last_error = 'lease expired after provider attempt',
            updated_at = now()
-       WHERE pj.account_id = $1::bigint
-         AND pj.status IN ('claimed', 'processing')
-         AND pj.lease_expires_at <= now()
+       WHERE ej.account_id = $1::bigint
+         AND ej.status IN ('claimed', 'processing')
+         AND ej.lease_expires_at <= now()
          AND EXISTS (
            SELECT 1
            FROM postbro.execution_attempts ea
-           WHERE ea.account_id = pj.account_id
-             AND ea.job_id = pj.id
+           WHERE ea.account_id = ej.account_id
+             AND ea.engagement_job_id = ej.id
          )`,
       [accountId],
     );
 
     const result = await client.query<{ id: string; attempts: number }>(
-      `UPDATE postbro.publish_jobs pj
+      `UPDATE postbro.engagement_jobs ej
        SET status = 'claimed',
            claimed_by = $2,
            lease_token = $3,
            lease_expires_at = now() + interval '5 minutes',
-           attempts = pj.attempts + 1,
+           attempts = ej.attempts + 1,
            updated_at = now()
-       WHERE pj.account_id = $1::bigint
-         AND pj.id = (
+       WHERE ej.account_id = $1::bigint
+         AND ej.id = (
            SELECT p2.id
-           FROM postbro.publish_jobs p2
+           FROM postbro.engagement_jobs p2
            WHERE p2.account_id = $1::bigint
              AND (
-               (p2.status = 'pending' AND p2.due_at <= now())
+               (p2.status = 'pending' AND p2.next_attempt_at <= now())
                OR (
                  p2.status IN ('claimed', 'processing')
                  AND p2.lease_expires_at <= now()
@@ -145,15 +145,15 @@ export async function claimDueJob(pool: Pool, accountId: number, workerId: strin
                    SELECT 1
                    FROM postbro.execution_attempts ea
                    WHERE ea.account_id = p2.account_id
-                     AND ea.job_id = p2.id
+                     AND ea.engagement_job_id = p2.id
                  )
                )
              )
-           ORDER BY COALESCE(p2.lease_expires_at, p2.due_at), p2.id
+           ORDER BY COALESCE(p2.lease_expires_at, p2.next_attempt_at), p2.id
            LIMIT 1
            FOR UPDATE SKIP LOCKED
          )
-       RETURNING pj.id, pj.attempts`,
+       RETURNING ej.id, ej.attempts`,
       [accountId, workerId, leaseToken],
     );
 
@@ -162,16 +162,16 @@ export async function claimDueJob(pool: Pool, accountId: number, workerId: strin
   });
 }
 
-export async function completeClaimedJob(
+export async function completeClaimedEngagementJob(
   pool: Pool,
   accountId: number,
-  jobId: number,
+  engagementJobId: number,
   leaseToken: string,
   outcome: 'confirmed' | 'failed',
 ): Promise<boolean> {
   return withRlsContext(pool, 0, accountId, async (client) => {
     const result = await client.query(
-      `UPDATE postbro.publish_jobs
+      `UPDATE postbro.engagement_jobs
        SET status = $4,
            claimed_by = NULL,
            lease_token = NULL,
@@ -182,23 +182,23 @@ export async function completeClaimedJob(
          AND lease_token = $3
          AND lease_expires_at > now()
          AND status IN ('claimed', 'processing')`,
-      [accountId, jobId, leaseToken, outcome],
+      [accountId, engagementJobId, leaseToken, outcome],
     );
     return result.rowCount === 1;
   });
 }
 
-export async function markJobNeedsReconciliation(
+export async function markEngagementJobNeedsReconciliation(
   pool: Pool,
   accountId: number,
-  jobId: number,
+  engagementJobId: number,
   leaseToken: string,
   reason: string,
 ): Promise<boolean> {
   const safeReason = redactErrorMessage(reason);
   return withRlsContext(pool, 0, accountId, async (client) => {
     const result = await client.query(
-      `UPDATE postbro.publish_jobs
+      `UPDATE postbro.engagement_jobs
        SET status = 'needs_reconciliation',
            claimed_by = NULL,
            lease_token = NULL,
@@ -210,7 +210,7 @@ export async function markJobNeedsReconciliation(
          AND lease_token = $3
          AND lease_expires_at > now()
          AND status IN ('claimed', 'processing')`,
-      [accountId, jobId, leaseToken, safeReason],
+      [accountId, engagementJobId, leaseToken, safeReason],
     );
     return result.rowCount === 1;
   });
@@ -232,30 +232,55 @@ const APPROVAL_AUTHZ_AND_SOURCE_SQL = `
       AND o.status = 'active'
       AND ta.status = 'active'
   )
-  AND (
-    (
-      a.proposal_id IS NOT NULL
-      AND EXISTS (
-        SELECT 1
-        FROM postbro.engagement_proposals ep
-        WHERE ep.account_id = a.account_id
-          AND ep.id = a.proposal_id
-          AND ep.status = 'pending'
-          AND ep.version = a.version
-      )
-    )
-    OR (
-      a.draft_id IS NOT NULL
-      AND EXISTS (
-        SELECT 1
-        FROM postbro.drafts d
-        WHERE d.account_id = a.account_id
-          AND d.id = a.draft_id
-          AND d.status IN ('draft', 'approved')
-          AND d.version = a.version
-      )
-    )
+  AND EXISTS (
+    SELECT 1
+    FROM postbro.engagement_proposals ep
+    WHERE ep.account_id = a.account_id
+      AND ep.id = a.proposal_id
+      AND ep.status = 'pending'
+      AND ep.version = a.version
   )`;
+
+export async function createApprovedEngagementJob(
+  pool: Pool,
+  operatorId: number,
+  accountId: number,
+  approvalId: number,
+): Promise<number | null> {
+  return withRlsContext(pool, operatorId, accountId, async (client) => {
+    const result = await client.query<{ id: string }>(
+      `INSERT INTO postbro.engagement_jobs (account_id, proposal_id, action_key, status, next_attempt_at)
+       SELECT a.account_id, a.proposal_id, a.action_key, 'pending', now()
+       FROM postbro.approvals a
+       JOIN postbro.operators o
+         ON o.id = a.operator_id
+       JOIN postbro.operator_accounts oa
+         ON oa.operator_id = o.id
+        AND oa.account_id = a.account_id
+       JOIN postbro.threads_accounts ta
+         ON ta.id = a.account_id
+       JOIN postbro.persona_bindings pb
+         ON pb.account_id = ta.id
+        AND pb.status = 'active'
+       JOIN postbro.engagement_proposals ep
+         ON ep.account_id = a.account_id
+        AND ep.id = a.proposal_id
+        AND ep.version = a.version
+        AND ep.status IN ('pending', 'approved')
+       WHERE a.id = $3
+         AND a.account_id = $2
+         AND a.operator_id = $1
+         AND a.action_type = 'engagement_reply'
+         AND a.status = 'approved'
+         AND o.status = 'active'
+         AND ta.status = 'active'
+       ON CONFLICT (account_id, action_key) DO NOTHING
+       RETURNING id`,
+      [operatorId, accountId, approvalId],
+    );
+    return result.rows[0] ? Number(result.rows[0].id) : null;
+  });
+}
 
 export async function approveApproval(pool: Pool, operatorId: number, accountId: number, approvalId: number): Promise<boolean> {
   return withRlsContext(pool, operatorId, accountId, async (client) => {
@@ -330,7 +355,7 @@ export async function consumeOauthSession(pool: Pool, operatorId: number, stateH
 export async function recordExecutionAttempt(
   pool: Pool,
   accountId: number,
-  jobId: number,
+  engagementJobId: number,
   actionKey: string,
   attemptNo: number,
   outcome: 'success' | 'failed' | 'ambiguous' | 'needs_reconciliation',
@@ -341,10 +366,10 @@ export async function recordExecutionAttempt(
   const safeResponse = redactProviderMetadata(providerResponse);
   return withRlsContext(pool, 0, accountId, async (client) => {
     const result = await client.query<{ id: string }>(
-      `INSERT INTO postbro.execution_attempts (account_id, job_id, action_key, attempt_no, outcome, provider_request, provider_response)
+      `INSERT INTO postbro.execution_attempts (account_id, engagement_job_id, action_key, attempt_no, outcome, provider_request, provider_response)
        VALUES ($1, $2, $3, $4, $5, $6, $7)
        RETURNING id`,
-      [accountId, jobId, actionKey, attemptNo, outcome, safeRequest, safeResponse],
+      [accountId, engagementJobId, actionKey, attemptNo, outcome, safeRequest, safeResponse],
     );
     return Number(result.rows[0]!.id);
   });

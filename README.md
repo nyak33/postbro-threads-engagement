@@ -1,8 +1,8 @@
 # PostBro — Threads Automation
 
-Standalone, **Threads-only** platform for publishing, scheduling, AI engagement, discovery, insights, and account-specific persona learning.
+Threads-only **engagement automation** backend. Postiz owns publishing and scheduling; PostBro consumes the separate Persona Engine and Reply Decision Engine for safe inbound engagement.
 
-> **Project stage:** P0 foundation in progress. A minimal TypeScript/Fastify API scaffold, `GET /health`, configuration validation, six unit tests and GitHub Actions CI are implemented. Meta Threads OAuth, the PostBro product Telegram bot, Supabase, publishing, scheduling and engagement are **not implemented or verified** yet.
+> **Project stage:** P0 foundation in progress. A minimal TypeScript/Fastify API scaffold, `GET /health`, configuration validation, six unit tests and GitHub Actions CI are implemented. Meta Threads OAuth, the PostBro product Telegram bot, Supabase and engagement automation are **not implemented or verified** yet.
 
 ## Source of truth
 
@@ -32,16 +32,16 @@ Hermes runs separately as the development agent on a VPS and can be contacted vi
 
 - **User interface:** Telegram bot with inline approvals and conversational commands; a minimal HTTPS page is used for Threads OAuth.
 - **API and workers:** Node.js 22+ / TypeScript / Fastify, deployed together initially.
-- **Social API:** Official Meta Threads API; the app's own Threads OAuth credentials, no Postiz dependency.
-- **Persistence & media:** Hosted Supabase PostgreSQL and Storage.
-- **AI:** Configurable cloud-model provider; our existing Persona and Decision Engine code is adapted into this repository.
-- **Operations:** Single always-on VPS, containerised deployment, durable schedules and execution history.
+- **Social API:** Official Meta Threads API for engagement; the app's own Threads OAuth credentials, no Postiz runtime dependency.
+- **Persistence:** Hosted Supabase PostgreSQL; posting media/storage remains with Postiz.
+- **AI:** Configurable cloud-model provider; the separate Persona Engine and Reply Decision Engine are consumed, not reimplemented.
+- **Operations:** Single always-on VPS, containerised deployment, durable engagement jobs and execution history.
 
 **Not in V1:** Instagram, Facebook Pages, general-purpose Postiz integration, full web dashboard, unverified Threads DM automation.
 
 ## First milestone
 
-Create a safe end-to-end path: connect a developer/tester Threads account → bind its persona → draft a text post in Telegram → approve/schedule → publish through official API → persist actual result and link. Then add inbound reply approval and self-learning observation.
+Create a safe end-to-end path: connect a developer/tester Threads account → bind its persona → sync an owned inbound reply → approve the proposed response in Telegram → send through the official API → persist actual result and audit.
 
 ## Security
 
@@ -70,4 +70,4 @@ PostBro original source code and documentation in this repository are released u
 
 - **Complete:** Repository foundation ([PR #1](https://github.com/nyak33/postbro-threads-engagement/pull/1)) and PB-P0-001 Fastify scaffold with six passing CI tests ([PR #2](https://github.com/nyak33/postbro-threads-engagement/pull/2)).
 - **In progress:** Remaining P0 dependencies including Supabase schema, operator/account isolation, real Meta Threads OAuth, persona binding and product Telegram bot.
-- **Not claimed:** Deployed PostBro service, live social publishing, scheduling, engagement or production readiness. See [the PRD](docs/PRD.md), [implementation plan](docs/IMPLEMENTATION_PLAN.md) and [setup checklist](docs/SETUP.md) for acceptance gates. Only explicit test evidence counts as verification.
+- **Not claimed:** Deployed PostBro service, live social engagement or production readiness; posting/scheduling remain with Postiz. See [the PRD](docs/PRD.md), [implementation plan](docs/IMPLEMENTATION_PLAN.md) and [setup checklist](docs/SETUP.md) for acceptance gates. Only explicit test evidence counts as verification.

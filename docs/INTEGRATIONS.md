@@ -6,7 +6,7 @@ This is a technical boundary summary, NOT a secret inventory. Detailed provision
 |---|---|---|---|
 | Meta Threads App | Threads App ID/Secret, eligible tester role, approved exact HTTPS redirect, granted scopes | Fastify OAuth state + callback, provider ID, token exchange/refresh, encrypted storage, permission gate | Real authorized tester connects; invalid/replayed state fails; scope denial handled |
 | Telegram **PostBro product** bot | Separate BotFather token and allowlisted numeric IDs | Product bot long polling initially; webhook only after HTTPS available, callbacks bound to operator/action | Authorized/unauthorized user checks, repeat-click tests, final status updates |
-| Supabase Cloud | Project URL, protected server secret, DB URL for migrations, media bucket | Postgres migrations, account isolation, atomic jobs and approvals, Storage URL policy | DB health, migration reproducibility, cross-account denial, concurrent-claim tests |
+| Supabase Cloud | Project URL, protected server secret, DB URL for migrations | Postgres migrations, account isolation, atomic engagement jobs and approvals | DB health, migration reproducibility, cross-account denial, concurrent-claim tests |
 | Hosted LLM | App-specific provider model/key and optional base URL | Validated structured scoring/drafts/learning adapter with timeout/fallback | Deterministic tests + explicit real test; no model output alone can authorize send |
 | Contabo VPS + DNS/TLS | VPS admin, chosen stable hostname, DNS and certificates | Docker Compose API/worker and only required HTTPS ports | Container health, restart persistence, OAuth callback verified publicly |
 | GitHub | Main repository and scoped reviewed write workflow | Feature branch, PR, future CI, code + evidence handoff | PR diff reviewed and CI runs when implemented |
@@ -25,6 +25,6 @@ Hermes on VPS and its Telegram development gateway were verified in an operator 
 ## Operational safe defaults
 
 - Secrets only in protected runtime environment / authorized secrets store, never repository, PR or Telegram.
-- PostBro new accounts default Semi-Auto. External reply requires approval; every publish request requires applicable confirmation or explicitly approved auto policy.
+- PostBro new accounts default Semi-Auto. External replies require approval; Full-Auto reply execution is a separate opt-in policy. Posting/scheduling confirmations belong to Postiz.
 - Stable HTTPS domain is prerequisite for real persistent Meta OAuth redirect. Use mocked testing first; live tests on designated developer tester with explicit owner approval.
 - Capture what changed, which tests ran, exact outcomes and which prerequisites remain blocked. Use `HANDOFF_PROTOCOL.md` for reviewer transfer.

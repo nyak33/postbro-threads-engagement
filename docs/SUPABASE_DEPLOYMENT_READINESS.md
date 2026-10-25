@@ -1,8 +1,8 @@
 # PostBro Supabase deployment readiness report
 
-**Target project:** `postbro-core` (`nqjlgalyjxifzisitzfa`), region `ap-southeast-1`, hosted PostgreSQL reported as 17.11.  
-**Reviewed migration:** `db/migrations/202610230001_database_foundation.sql`  
-**Migration SHA-256:** `bc8728cdc07075014d54f87cf82b433f4a273ee94daf20581852b527f9b0d3ec`  
+**Target project:** `postbro-core` (`nqjlgalyjxifzisitzfa`), region `ap-southeast-1`, hosted PostgreSQL reported as 17.11.
+**Reviewed migration:** `db/migrations/202610230001_database_foundation.sql`
+**Migration SHA-256:** `a371429aa837cd31a907c56df98ef429c0a2bf23432e99ee0fd4f73ea741c8a0`
 **PostgreSQL 17.11 rehearsal image:** `postgres:17.11@sha256:b8faeff7712663c2773a190181e1246e37e364b887611c04658c28b44e2408fe`
 
 ## Gate results
