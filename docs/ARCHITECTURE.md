@@ -4,7 +4,7 @@
 
 ## Product boundary
 
-PostBro is ONE standalone, Threads-only TypeScript application for **publishing, scheduling, engagement, insights and persona learning**. It connects directly to the official Meta Threads API; no Postiz dependency. User operates it primarily through the PostBro Telegram bot plus a narrow HTTPS Meta OAuth flow. Hermes is an independent development agent, NOT the PostBro application backend or required runtime LLM.
+PostBro is ONE Threads-only TypeScript application for **engagement automation**. It connects directly to the official Meta Threads API for engagement. Postiz exclusively owns posting and scheduling; PostBro has no Postiz runtime dependency. The Persona Engine and Reply Decision Engine remain separate components consumed by PostBro. User operates it primarily through the PostBro Telegram bot plus a narrow HTTPS Meta OAuth flow. Hermes is an independent development agent, NOT the PostBro application backend or required runtime LLM.
 
 ### Context diagram
 
@@ -12,8 +12,8 @@ PostBro is ONE standalone, Threads-only TypeScript application for **publishing,
 Owner (PostBro Telegram bot) -> Telegram adapter -> Fastify application/API
                                                -> auth + account/permission gate
                                                -> persona + KB resolver
-                                               -> draft/approval service
-                                               -> publishing, engagement, discovery, insights services
+                                               -> engagement proposal/approval service
+                                               -> engagement, discovery, insights services
                                                -> durable jobs / worker (same image; separate process allowed)
                                                       |-> Meta Threads API (official)
                                                       |-> Supabase Postgres + Storage
@@ -33,9 +33,8 @@ Developer bot != Product bot; Hermes state != PostBro business state.
 | Auth/account | state nonce, token refresh, immutable provider ID, capability snapshots, disconnect | P0 |
 | Persona resolver | account -> approved persona/version + task surface (post vs reply) | P0 |
 | Knowledge base | account-scoped reference material; suggested module, not an extra server/DB | Deferred until task specification |
-| Draft + approval | durable lifecycle; idempotent callbacks; reapproval after edits | P1 |
-| Publishing | publish-now and durable schedule; provider confirmation/reconciliation | P1A |
-| Inbound engagement | sync own-post replies; risk classification and persona draft; send after approval | P1B |
+| Engagement proposal + approval | durable lifecycle; idempotent callbacks; reapproval after edits | P1 |
+| Inbound engagement | sync own-post replies; risk classification and persona-grounded proposal; send after approval | P1 |
 | Insights | capability-aware own-post/account metrics | P1C |
 | Learning | observation -> candidate -> eval -> human approval -> version activation | P2A |
 | Discovery / outbound | capability-gated official keyword search; external-root replies HOLD | P2B / HOLD |
@@ -52,7 +51,6 @@ src/
     personas/
     knowledge-base/   # only when prioritized
     approvals/
-    publishing/
     engagement/
     discovery/
     insights/
@@ -65,7 +63,7 @@ src/
   workers/             # durable jobs; explicit ownership of retries
   shared/              # types, errors, config validation, observability
 tests/
-supabase/migrations/
+db/migrations/
 docker/
 ~~~
 
@@ -73,7 +71,7 @@ This is a target structure. Create folders as a task requires; do not generate e
 
 ## Source of truth / safety
 
-- PRD: intended product behaviour. Supabase: drafts, accounts, persona bindings, approvals, job intent, attempts and audit. Meta Threads: whether post/reply actually exists. Telegram: control surface, NOT durable state. LLM: suggestions only; deterministic code authorizes execution.
+- PRD: intended product behaviour. Supabase: accounts, persona bindings, engagement proposals, approvals, engagement job intent, attempts and audit. Meta Threads: whether post/reply actually exists. Telegram: control surface, NOT durable state. LLM: suggestions only; deterministic code authorizes execution.
 - Timestamps persisted UTC; display Asia/Kuala_Lumpur unless operator configured otherwise. Do not assume VPS timezone matches display timezone.
 - Scoped to immutable provider account ID at every data-access path, job, session, cache and LLM context. No shared account history or knowledge-base fallback.
 - Encrypt Meta access tokens at rest; retain only necessary scopes/expiry metadata for status. Supabase server secret never exposed to clients; service-layer account authorization remains mandatory even if backend DB role bypasses RLS.
@@ -92,8 +90,7 @@ One Contabo VPS; Node.js >=22 + strict TypeScript + Fastify; Docker Compose for 
 ## Testing gates
 
 - P0: reject forged OAuth state, unauthorized Telegram sender, cross-account persona/data binding; encrypted token handling; CI and reproducible migration tests.
-- P1A: real tester post confirmed via Meta ID/permalink; scheduled job survives restart; no duplicate on replay/ambiguous remote outcome.
-- P1B: one owned-reply event -> safe score/draft -> explicit approval -> at most one confirmed reply; rejection means no send.
+- P1: one owned-reply event -> safe score/proposal -> explicit approval -> at most one confirmed reply; rejection means no send; engagement job survives restart; no duplicate on replay/ambiguous remote outcome.
 - P1C/P2: capability-aware insights, learning candidates never self-activate, discovery feature-gated, other accounts isolated.
 
 See `IMPLEMENTATION_PLAN.md` for sequencing and `INTEGRATIONS.md` for provider preconditions.

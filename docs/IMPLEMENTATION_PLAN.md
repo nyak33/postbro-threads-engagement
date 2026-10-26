@@ -4,7 +4,7 @@
 
 ## First-use target
 
-One authorized Threads tester account connects using actual official OAuth; binds to its correct persona; owner can draft/approve/schedule/publish a text post in the **PostBro product Telegram bot**; real Meta ID/permalink and durable audit are saved; inbound reply receives persona-based review and exactly one approved response. Do not conflate this with the separate functioning Hermes development bot.
+One authorized Threads tester account connects using actual official OAuth; binds to its correct external Persona Engine identity; owner can review/approve/reject a proposed inbound reply in the **PostBro product Telegram bot**; the real Meta reply result/context and durable audit are saved. Postiz owns posting and scheduling. Do not conflate this with the separate functioning Hermes development bot.
 
 ## Gates / phased delivery
 
@@ -12,8 +12,7 @@ One authorized Threads tester account connects using actual official OAuth; bind
 |---|---|---|---|
 | Docs foundation | Agent contract, architecture, handoff, task mapping | Approved documentation PR; does NOT mean app ready | COMPLETE — merged PR #1 |
 | P0 | Scaffold + CI; migrations/account isolation; OAuth/token safety; persona binding; bot authentication | Real tester OAuth and verified account/persona authz; deterministic security tests | IN PROGRESS — scaffold/CI merged PR #2; local PostgreSQL foundation merged PR #5 (20 tests), hosted verification/OAuth/bot/persona gates outstanding |
-| P1A | Draft, preview, publish and durable scheduling | One real confirmed Threads text post; schedule survives restart and no duplicate | NOT STARTED |
-| P1B | Owned reply sync, risk score, persona response, Telegram approval, send/reconcile | Real owned reply -> one confirmed approved response | NOT STARTED |
+| P1 | Owned reply sync, risk score, persona-grounded proposal, Telegram approval, durable send/reconcile | Real owned reply -> one confirmed approved response; engagement job survives restart and no duplicate | NOT STARTED |
 | P1C | Capability-aware own-post/account insights | Real supported metrics returned, unsupported ones labelled | NOT STARTED |
 | P2A | Historical evidence, learning candidate, eval and human version approval | Approved candidate improves tests; rollback verified | NOT STARTED |
 | P2B | Media, permission-gated discovery, multi-account controls | Each supported API capability smoke tested; no unverified outbound/DM | NOT STARTED |
@@ -28,10 +27,8 @@ One authorized Threads tester account connects using actual official OAuth; bind
 | PB-P0-003 | PB-P0-002; stable HTTPS + Meta tester/app | Secure Threads OAuth, state binding, encrypted token persistence/refresh | Hermes PR + controlled tester evidence |
 | PB-P0-004 | PB-P0-002; separate PostBro bot token | Product Telegram bot allowlist, inline callback authorization, approval state machine | Hermes PR + unauthorized-user tests |
 | PB-P0-005 | PB-P0-002/003; persona repo audit | Persona engine adapter, immutable account binding, per-surface compiler | Hermes PR + cross-account tests |
-| PB-P1A-001 | P0 gates | Text draft, preview, confirm, real publish with outcome reconciliation | Hermes PR + Meta tester permalink |
-| PB-P1A-002 | PB-P1A-001 | Durable schedule worker, cancellation, retries and crash-safe uniqueness | Hermes PR + restart/idempotency evidence |
-| PB-P1B-001 | P0 + persona/approval | Owned reply sync, scoring adapter, review queue | Hermes PR + mocked/live evidence |
-| PB-P1B-002 | PB-P1B-001 | Confirmed reply executor, idempotency and deny action | Hermes PR + approved reply evidence |
+| PB-P1-001 | P0 + persona/approval | Owned reply sync, scoring adapter, review queue | Hermes PR + mocked/live evidence |
+| PB-P1-002 | PB-P1-001 | Approved reply executor, durable engagement job idempotency and deny action | Hermes PR + approved reply evidence |
 | PB-P1C-001 | P0 + granted scopes | Basic account/post insights | Hermes PR + real metric examples with redaction |
 
 Small changes may split these tasks after review; do not combine all tasks into one large implementation PR. Scoped specifications: `tasks/PB-P0-001.md` (merged PR #2), `tasks/PB-P0-002.md` (LOCAL foundation merged PR #5) and `tasks/PB-P0-002H.md` (HOSTED readiness, not implemented; proposal for approval). All later tasks need approved specs before implementation.
@@ -39,7 +36,7 @@ Small changes may split these tasks after review; do not combine all tasks into 
 ## Pre-implementation dependencies
 
 - **Currently observed in prior operator session:** Contabo VPS with Node/npm/Git/Docker; Hermes Kimi K3 via Rootsys endpoint responded in CLI and Telegram; Hermes Telegram gateway systemd service active and manual command approval denial tested; GitHub repository cloned using read-only deploy key.
-- **Verified in GitHub:** Fastify scaffold and CI merged PR #2; MIT license merged PR #3; local PostgreSQL foundation, 14 account-scoped application tables and 20 passing tests merged PR #5. Required `lint-typecheck-test` enforced. No hosted app or database migration implied.
+- **Verified in GitHub:** Fastify scaffold and CI merged PR #2; MIT license merged PR #3; engagement-only local PostgreSQL foundation, 13 account-scoped application tables plus the migration ledger and 32 passing tests on this branch. Required `lint-typecheck-test` enforced. No hosted app or database migration implied.
 - **Verified in connected Supabase (2026-10-23, read-only):** dedicated `postbro-core` project in Singapore, active PostgreSQL 17.11, PostBro schema/roles absent, SQL read-only preflight successful; application credentials, hosted migrations, runtime connectivity and Storage unconfigured/unverified.
 - **Not proven for PostBro application:** new PostBro BotFather bot, Meta Threads app/testers/granted scopes, Supabase app secret/DB runtime URL, stable HTTPS hostname, PostBro LLM adapter credentials, running deployed app or hosted PostBro database schema.
 - **GitHub Hermes workflow:** Scoped GitHub fine-grained token configured on VPS for the PostBro repository; feature-branch push was tested, and PR #2 was authored through Hermes. Main is protected with PR requirement and required CI check. Keep the token secret and do not assume direct main pushes are allowed.
@@ -51,8 +48,8 @@ A scoped, reviewed PR must contain reproducible implementation, actual tests, se
 
 ## Scope controls
 
-- PostBro implements native posting/scheduling and engagement. No Postiz runtime requirement.
+- PostBro implements engagement automation only. Postiz owns posting/scheduling; no Postiz runtime requirement.
 - Manual and Semi-Auto replies always need user approval. Full-Auto per-account opt-in only with risk policies, caps, cooldown, kill switch and evidence.
 - First deliver a single dogfood Threads tester account; multi-account isolation design and tests are mandatory early even if full controls are P2.
-- Discovery-to-content/keyword opportunities may be designed later, but API feature activation is permission-gated. External-root replies and Threads DMs HOLD until officially verified.
+- Discovery-to-engagement opportunities may be designed later, but API feature activation is permission-gated. External-root replies and Threads DMs HOLD until officially verified.
 - Do not implement real social actions or any production mutation as part of docs-only PR.

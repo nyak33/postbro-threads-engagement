@@ -12,7 +12,7 @@ Applies to all coding agents, including Hermes running on the Contabo VPS or via
 
 ## Authority
 
-- `docs/PRD.md` is the single source of truth for product behaviour, priorities, states and acceptance. This repo owns **Threads publishing, scheduling AND engagement**. Do not import Postiz as a runtime dependency or build a separate scheduler by default.
+- `docs/PRD.md` is the single source of truth for product behaviour, priorities, states and acceptance. This repo owns Threads engagement automation only. Postiz exclusively owns posting and scheduling; PostBro has no Postiz runtime dependency. Persona Engine and Reply Decision Engine remain separate components.
 - Proposed architecture details belong in `docs/ARCHITECTURE.md`; if in conflict with PRD, stop, explain conflict and propose a reviewable PRD amendment. Never silently rewrite the PRD.
 - `docs/SETUP.md` and `.env.example` define dependency/credential names. Configuration placeholders are not evidence of provisioned services.
 - A task spec defines what to implement NOW, not permission to implement every feature in PRD. No unrequested features, premature infrastructure or speculative integrations.

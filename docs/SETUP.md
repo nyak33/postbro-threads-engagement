@@ -54,7 +54,7 @@ See `ARCHITECTURE.md`, `DEVELOPMENT_WORKFLOW.md` and `INTEGRATIONS.md` for modul
 - [ ] In Threads app settings, locate and securely record **Threads App ID** -> THREADS_APP_ID and **Threads App Secret** -> THREADS_APP_SECRET. These are the Threads-specific credentials, not automatically interchangeable with generic Facebook App credentials.
 - [ ] Set a stable, publicly accessible **HTTPS OAuth redirect URI**, suggested: https://YOUR-HOST/auth/threads/callback. The exact string must match both Meta settings and THREADS_REDIRECT_URI.
 - [ ] For an unpublished development-mode app, add each selected test Threads identity to its appropriate **Threads Tester** role and have the invited account accept the invitation. Check available Meta dashboard menu names; they may change.
-- [ ] Make sure requested permissions match the intended features; minimum target: threads_basic and threads_content_publish. Add threads_read_replies, threads_manage_replies and threads_manage_insights as those features are implemented.
+- [ ] Make sure requested permissions match engagement-only features; minimum target: threads_basic plus the currently verified official Threads reply read/manage scopes. Add insights/discovery scopes only when those features are implemented. Revalidate whether any publishing scope is required for reply creation before requesting it.
 - [ ] Treat threads_keyword_search / other discovery permissions separately. Confirm actual current Meta access requirements, app role and advanced access before enabling the discovery feature.
 - [ ] Do **not** switch app live/publish merely for our tester dogfood. Public onboarding later requires the applicable review and app access.
 
@@ -70,7 +70,7 @@ See `ARCHITECTURE.md`, `DEVELOPMENT_WORKFLOW.md` and `INTEGRATIONS.md` for modul
 ### Verify (live)
 
 - [ ] Tester account OAuth completes; backend obtains /me identity without leaking credentials.
-- [ ] Test real text publish and store confirmed post ID/permalink.
+- [ ] Test a real approved reply on an owned Threads post and store confirmed reply ID/context. Posting/scheduling smoke tests belong to Postiz.
 - [ ] Replayed state rejected; wrong user/account cannot hijack pairing.
 - [ ] Token expiry/refresh and permission-denial cases handled.
 - [ ] Feature switches reflect actual granted and verified capabilities.
@@ -89,7 +89,7 @@ See `ARCHITECTURE.md`, `DEVELOPMENT_WORKFLOW.md` and `INTEGRATIONS.md` for modul
 - [ ] Get Project URL from Project Settings / Connect -> SUPABASE_URL.
 - [ ] Get or create a **new secret API key**, prefix sb_secret_, from API Keys -> SUPABASE_SECRET_KEY. This replaces the legacy service_role key for new code. **Never expose it client-side**.
 - [ ] Obtain the database connection string/credentials for migrations -> DATABASE_URL. Select direct/transaction pooler as appropriate for the migration tooling; keep it private.
-- [ ] Create a Storage bucket, proposed name postbro-media, and record it as SUPABASE_STORAGE_BUCKET. Configure deliberate public media delivery for assets Meta must fetch, without making the entire private asset library public.
+- [ ] Storage/media buckets are deferred while Postiz owns posting media; do not create PostBro posting media storage for the engagement-only foundation.
 - [ ] Optional: SUPABASE_PUBLISHABLE_KEY (sb_publishable_...) if/when a future web client reads Supabase directly. Not essential for Telegram-only backend.
 - [ ] **Not required:** Supabase personal access token, management API token or service_role legacy key for normal app runtime. Only request a Supabase management token if automation specifically uses the Supabase management API.
 
@@ -99,14 +99,14 @@ See `ARCHITECTURE.md`, `DEVELOPMENT_WORKFLOW.md` and `INTEGRATIONS.md` for modul
 - [ ] RLS/grants appropriate to access model. Backend secret key bypasses RLS, so enforce strict operator + account authorisation in service layer.
 - [ ] Build durable queue claims/leases and compare-and-swap approval transitions at the database level.
 - [ ] Encrypt Meta credentials before inserting them in DB; exclude plaintext and ciphertext from analytics/error logging.
-- [ ] Configure object upload, MIME/size policy and publicly retrievable temporary/published media URLs for Meta fetch where necessary.
+- [ ] Configure engagement-safe logging/redaction and retention; posting media upload policy remains with Postiz.
 - [ ] Record data retention/deletion procedures, DB backup/restore and secret rotation plan.
 
 ### Verify
 
 - [ ] Health check confirms database connectivity.
 - [ ] Migration up/down or reproducible clean schema installation passes.
-- [ ] Create/retrieve account, draft, schedule, approval and audit row; correct account isolation.
+- [ ] Create/retrieve account, engagement event, proposal, approval, engagement job, execution attempt and audit row; correct account isolation.
 - [ ] Simultaneous job claims result in one claimant; revoked approval never sends.
 - [ ] Media uploaded, then fetched by provider-compatible public HTTPS URL; unauthorised private object not accessible.
 
@@ -123,7 +123,7 @@ See `ARCHITECTURE.md`, `DEVELOPMENT_WORKFLOW.md` and `INTEGRATIONS.md` for modul
 - [ ] Use /newbot, choose name and unique username.
 - [ ] Securely obtain the resulting **Telegram Bot Token** -> TELEGRAM_BOT_TOKEN. Never send this token *to* the bot as a chat message.
 - [ ] Determine operator's numeric **Telegram User ID** (not username) using an authenticated /start event and backend log with redaction, or another reliable method. Add approved IDs as comma-separated TELEGRAM_ALLOWED_USER_IDS.
-- [ ] Optionally configure /setcommands in BotFather: start, menu, accounts, create, schedule, inbox, discover, insights, persona, settings, status, help.
+- [ ] Optionally configure /setcommands in BotFather: start, menu, accounts, inbox, persona, settings, status, help; discover/insights only when separately enabled.
 - [ ] Keep the bot private for dogfood; never treat public bot discovery as user authorisation.
 
 ### Engineering: implement
@@ -131,7 +131,7 @@ See `ARCHITECTURE.md`, `DEVELOPMENT_WORKFLOW.md` and `INTEGRATIONS.md` for modul
 - [ ] Local/dev uses **long polling** first (fewest infrastructure dependencies); stop polling before switching to webhook.
 - [ ] Production uses Telegram HTTPS webhook with a random TELEGRAM_WEBHOOK_SECRET; verify incoming Telegram secret token header. Only one update delivery mode at a time.
 - [ ] Verify every sender's Telegram user ID against allowlist, **including inline callback queries**.
-- [ ] Create main menu with Inline Keyboard, approve/edit/regenerate/reject proposal cards and schedule preview buttons.
+- [ ] Create main menu with Inline Keyboard and approve/edit/regenerate/reject engagement proposal cards; no create/schedule post controls.
 - [ ] Map message + callback IDs to durable approval records, with 30-minute default edit session expiration (configurable).
 - [ ] Callback state is single-use; double-click, forwarded message or replay cannot execute twice.
 - [ ] Bot edits existing status card to Confirmed / Failed / Needs Review after provider outcome; notification failure does not change DB truth.
@@ -139,7 +139,7 @@ See `ARCHITECTURE.md`, `DEVELOPMENT_WORKFLOW.md` and `INTEGRATIONS.md` for modul
 ### Verify
 
 - [ ] Allowed /start works; unknown Telegram User ID rejected.
-- [ ] Approve -> executes once; Edit -> prompts for revised text and reapproval; Reject -> never publishes.
+- [ ] Approve -> queues one engagement job and executes once; Edit -> prompts for revised text and reapproval; Reject -> never replies.
 - [ ] Restart does not lose pending approvals; expired callbacks refused.
 - [ ] Webhook secret and Telegram API calls work on deployed endpoint.
 
@@ -165,9 +165,9 @@ See `ARCHITECTURE.md`, `DEVELOPMENT_WORKFLOW.md` and `INTEGRATIONS.md` for modul
 
 ### Verify
 
-- [ ] Model returns a persona-aligned draft in BM/English where configured.
+- [ ] Model returns a persona-aligned proposed reply in BM/English where configured.
 - [ ] Intent/risk scoring produces parseable schema and skip/review outcomes.
-- [ ] Bad prompt or provider timeout doesn't auto-publish or send a reply.
+- [ ] Bad prompt or provider timeout doesn't send a reply.
 - [ ] Learned change improves defined evaluation fixtures before user approval.
 
 **Variables:** LLM_PROVIDER, LLM_MODEL, LLM_API_KEY, optional LLM_BASE_URL.
@@ -196,7 +196,7 @@ See `ARCHITECTURE.md`, `DEVELOPMENT_WORKFLOW.md` and `INTEGRATIONS.md` for modul
 
 - [ ] Server remains healthy after restart and developer laptop shutdown.
 - [ ] Telegram webhook (if selected) and Meta OAuth callback reachable over valid HTTPS.
-- [ ] Due scheduled text post executes and job audit records Meta result.
+- [ ] Due approved engagement reply executes and job audit records Meta result.
 - [ ] Simulated provider errors show recoverable failure and no duplicates.
 
 **Variables:** NODE_ENV, PORT, PUBLIC_BASE_URL, APP_TIMEZONE, all service keys above.
@@ -205,7 +205,7 @@ See `ARCHITECTURE.md`, `DEVELOPMENT_WORKFLOW.md` and `INTEGRATIONS.md` for modul
 
 - [ ] Review nyak33/postbro-persona-engine: port interview, persona/context compilation, approved learning, account binding; remove reliance on Postiz integration IDs and bind to immutable Meta Threads user IDs.
 - [ ] Review nyak33/postbro-inbound-engagement-engine: reuse classifier/relevance/risk/safe reply patterns. **Resolve existing SEMI_AUTO behaviour conflict**: new PRD requires human approval for every reply in Semi-Auto.
-- [ ] Review nyak33/postbro-engagement-threads: adapt provider methods to **direct official Meta Threads API**, removing reliance on Postiz bridge and JSON-store idempotency.
+- [ ] Review nyak33/postbro-engagement-threads: adapt provider methods to **direct official Meta Threads API** engagement only; Postiz remains the posting/scheduling system, not a PostBro runtime dependency.
 - [ ] Review nyak33/threads-operator: selectively port useful Telegram approval patterns and durable queue concepts; do not import legacy scraping or obsolete scheduling infrastructure blindly.
 - [ ] Reference nyak33/postbro-postiz Threads OAuth and publishing implementation conceptually, but do not copy AGPL-licensed code into the new repository without licence review.
 - [ ] Add unit tests before replacing old components; preserve old repositories unchanged until milestone validation.
@@ -221,8 +221,8 @@ See `ARCHITECTURE.md`, `DEVELOPMENT_WORKFLOW.md` and `INTEGRATIONS.md` for modul
 | 4 | Supabase project, keys, schema and encrypted storage | Safe token persistence, account and job records |
 | 5 | Telegram bot token + allowed User IDs | Secure control surface |
 | 6 | OAuth + Telegram + Supabase integration | Account connection & persona binding |
-| 7 | Text publisher, worker and queued approval | Real posting and scheduling |
-| 8 | LLM key + Persona/Decision Engine | AI drafts and relevance scoring |
+| 7 | Engagement proposal approval + durable worker | Approved reply executes once |
+| 8 | LLM key + external Persona/Reply Decision Engine | AI reply proposals and relevance scoring |
 | 9 | Reply polling + approval executor | Working inbound engagement |
 | 10 | Insights/learning; additional verified permissions | Discovery, media and full-auto extension |
 
@@ -235,8 +235,8 @@ See `ARCHITECTURE.md`, `DEVELOPMENT_WORKFLOW.md` and `INTEGRATIONS.md` for modul
 | SMOKE-01 | Connect valid tester Threads account | Correct account ID/scopes persisted | TBD | Not run |
 | SMOKE-02 | Invalid OAuth state | 4xx and no token stored | TBD | Not run |
 | SMOKE-03 | Unauthorised Telegram command | Rejected | TBD | Not run |
-| SMOKE-04 | Approve draft + publish text | Confirmed Threads ID/permalink | TBD | Not run |
-| SMOKE-05 | Schedule post + restart worker | Executes at correct time once | TBD | Not run |
+| SMOKE-04 | Approve proposed reply + send | Confirmed Threads reply ID/context | TBD | Not run |
+| SMOKE-05 | Approved reply + restart worker | Executes once after restart | TBD | Not run |
 | SMOKE-06 | Inbound reply -> AI suggestion -> approve | One confirmed reply | TBD | Not run |
 | SMOKE-07 | Press Approve twice | Exactly one remote action | TBD | Not run |
 | SMOKE-08 | Second account uses different persona | No cross-account mix | TBD | Not run |
@@ -248,13 +248,13 @@ See `ARCHITECTURE.md`, `DEVELOPMENT_WORKFLOW.md` and `INTEGRATIONS.md` for modul
 | Symptom | First checks |
 |---|---|
 | Threads login denied | Correct Threads App ID, redirect exact match, tester invitation accepted, scopes and developer mode |
-| Threads publish works but replies fail | threads_read_replies / threads_manage_replies access and current API restrictions |
+| Threads replies fail | Verify current official Threads reply read/manage scopes and API restrictions |
 | Discovery returns permission error | threads_keyword_search support/access; do not switch to scraping |
 | Bot responds to no one | Bot token valid, polling vs webhook exclusivity, allowed numeric user ID |
 | Unknown people can use bot | Immediately disable bot, rotate token if compromised, enforce allowlist on every handler |
 | Supabase 401/permission denied | Secret key vs publishable/legacy type, project URL, grants/RLS, server-only context |
-| Meta cannot fetch media | Object's public HTTPS URL accessibility, MIME format, size, container readiness |
-| Duplicate post after network timeout | Uncertain send was retried without reconciliation or durable idempotency |
+| Meta cannot process reply | Confirm official reply endpoint, parent ID, permissions and rate limits; media posting remains with Postiz |
+| Duplicate reply after network timeout | Uncertain send was retried without reconciliation or durable engagement-job idempotency |
 | Schedule missed | VPS/worker uptime, DB claim lease, UTC conversion, failed token refresh |
 
 ## 10. Source documents

@@ -94,41 +94,6 @@ CREATE TABLE postbro.persona_bindings (
   FOREIGN KEY (account_id, persona_version_id) REFERENCES postbro.persona_versions(account_id, id) ON DELETE RESTRICT
 );
 
-CREATE TABLE postbro.drafts (
-  id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-  account_id bigint NOT NULL REFERENCES postbro.threads_accounts(id) ON DELETE RESTRICT,
-  content text NOT NULL,
-  status text NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'approved', 'superseded', 'cancelled')),
-  version integer NOT NULL DEFAULT 1 CHECK (version > 0),
-  created_at timestamptz NOT NULL DEFAULT now(),
-  updated_at timestamptz NOT NULL DEFAULT now(),
-  UNIQUE (account_id, id)
-);
-
-CREATE TABLE postbro.publish_jobs (
-  id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-  account_id bigint NOT NULL,
-  draft_id bigint NOT NULL,
-  action_key text NOT NULL,
-  due_at timestamptz NOT NULL,
-  status text NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'claimed', 'processing', 'confirmed', 'failed', 'needs_reconciliation', 'cancelled')),
-  claimed_by text,
-  lease_token text,
-  lease_expires_at timestamptz,
-  attempts integer NOT NULL DEFAULT 0 CHECK (attempts >= 0),
-  last_error text,
-  created_at timestamptz NOT NULL DEFAULT now(),
-  updated_at timestamptz NOT NULL DEFAULT now(),
-  UNIQUE (account_id, id),
-  UNIQUE (account_id, action_key),
-  FOREIGN KEY (account_id, draft_id) REFERENCES postbro.drafts(account_id, id) ON DELETE RESTRICT,
-  CHECK (
-    (status IN ('claimed', 'processing') AND claimed_by IS NOT NULL AND lease_token IS NOT NULL AND lease_expires_at IS NOT NULL)
-    OR (status NOT IN ('claimed', 'processing') AND claimed_by IS NULL AND lease_token IS NULL AND lease_expires_at IS NULL)
-  )
-);
-CREATE INDEX publish_jobs_due_pending ON postbro.publish_jobs (status, due_at, id);
-
 CREATE TABLE postbro.engagement_events (
   id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   account_id bigint NOT NULL REFERENCES postbro.threads_accounts(id) ON DELETE RESTRICT,
@@ -157,10 +122,9 @@ CREATE TABLE postbro.approvals (
   id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   account_id bigint NOT NULL REFERENCES postbro.threads_accounts(id) ON DELETE RESTRICT,
   operator_id bigint NOT NULL REFERENCES postbro.operators(id) ON DELETE RESTRICT,
-  proposal_id bigint,
-  draft_id bigint,
+  proposal_id bigint NOT NULL,
   action_key text NOT NULL,
-  action_type text NOT NULL,
+  action_type text NOT NULL CHECK (action_type = 'engagement_reply'),
   status text NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected', 'expired', 'superseded')),
   expires_at timestamptz NOT NULL,
   decided_at timestamptz,
@@ -169,16 +133,44 @@ CREATE TABLE postbro.approvals (
   UNIQUE (account_id, id),
   FOREIGN KEY (operator_id, account_id) REFERENCES postbro.operator_accounts(operator_id, account_id) ON DELETE RESTRICT,
   FOREIGN KEY (account_id, proposal_id) REFERENCES postbro.engagement_proposals(account_id, id) ON DELETE RESTRICT,
-  FOREIGN KEY (account_id, draft_id) REFERENCES postbro.drafts(account_id, id) ON DELETE RESTRICT,
-  CHECK (proposal_id IS NOT NULL OR draft_id IS NOT NULL),
   CHECK (status = 'pending' OR decided_at IS NOT NULL)
 );
 CREATE UNIQUE INDEX approvals_one_pending_per_action ON postbro.approvals (account_id, action_key) WHERE status = 'pending';
+CREATE UNIQUE INDEX approvals_identity_action_version ON postbro.approvals (account_id, id, operator_id, proposal_id, action_key, version);
+
+CREATE TABLE postbro.engagement_jobs (
+  id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  account_id bigint NOT NULL,
+  operator_id bigint NOT NULL,
+  proposal_id bigint NOT NULL,
+  approval_id bigint NOT NULL,
+  action_key text NOT NULL,
+  proposal_version integer NOT NULL CHECK (proposal_version > 0),
+  next_attempt_at timestamptz NOT NULL DEFAULT now(),
+  status text NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'claimed', 'processing', 'confirmed', 'failed', 'needs_reconciliation', 'cancelled')),
+  claimed_by text,
+  lease_token text,
+  lease_expires_at timestamptz,
+  attempts integer NOT NULL DEFAULT 0 CHECK (attempts >= 0),
+  last_error text,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (account_id, id),
+  UNIQUE (account_id, action_key),
+  FOREIGN KEY (account_id, proposal_id) REFERENCES postbro.engagement_proposals(account_id, id) ON DELETE RESTRICT,
+  FOREIGN KEY (account_id, approval_id, operator_id, proposal_id, action_key, proposal_version)
+    REFERENCES postbro.approvals(account_id, id, operator_id, proposal_id, action_key, version) ON DELETE RESTRICT,
+  CHECK (
+    (status IN ('claimed', 'processing') AND claimed_by IS NOT NULL AND lease_token IS NOT NULL AND lease_expires_at IS NOT NULL)
+    OR (status NOT IN ('claimed', 'processing') AND claimed_by IS NULL AND lease_token IS NULL AND lease_expires_at IS NULL)
+  )
+);
+CREATE INDEX engagement_jobs_claimable ON postbro.engagement_jobs (status, next_attempt_at, id);
 
 CREATE TABLE postbro.execution_attempts (
   id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   account_id bigint NOT NULL REFERENCES postbro.threads_accounts(id) ON DELETE RESTRICT,
-  job_id bigint NOT NULL,
+  engagement_job_id bigint NOT NULL,
   action_key text NOT NULL,
   attempt_no integer NOT NULL CHECK (attempt_no > 0),
   outcome text NOT NULL CHECK (outcome IN ('success', 'failed', 'ambiguous', 'needs_reconciliation')),
@@ -187,7 +179,7 @@ CREATE TABLE postbro.execution_attempts (
   created_at timestamptz NOT NULL DEFAULT now(),
   UNIQUE (account_id, id),
   UNIQUE (account_id, action_key, attempt_no),
-  FOREIGN KEY (account_id, job_id) REFERENCES postbro.publish_jobs(account_id, id) ON DELETE RESTRICT
+  FOREIGN KEY (account_id, engagement_job_id) REFERENCES postbro.engagement_jobs(account_id, id) ON DELETE RESTRICT
 );
 
 CREATE TABLE postbro.audit_events (
@@ -212,10 +204,9 @@ ALTER TABLE postbro.operator_accounts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE postbro.personas ENABLE ROW LEVEL SECURITY;
 ALTER TABLE postbro.persona_versions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE postbro.persona_bindings ENABLE ROW LEVEL SECURITY;
-ALTER TABLE postbro.drafts ENABLE ROW LEVEL SECURITY;
-ALTER TABLE postbro.publish_jobs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE postbro.engagement_events ENABLE ROW LEVEL SECURITY;
 ALTER TABLE postbro.engagement_proposals ENABLE ROW LEVEL SECURITY;
+ALTER TABLE postbro.engagement_jobs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE postbro.approvals ENABLE ROW LEVEL SECURITY;
 ALTER TABLE postbro.execution_attempts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE postbro.audit_events ENABLE ROW LEVEL SECURITY;
@@ -255,22 +246,17 @@ CREATE POLICY postbro_app_persona_bindings_account_scope ON postbro.persona_bind
   USING (account_id = NULLIF(current_setting('postbro.account_id', true), '')::bigint)
   WITH CHECK (account_id = NULLIF(current_setting('postbro.account_id', true), '')::bigint);
 
-CREATE POLICY postbro_app_drafts_account_scope ON postbro.drafts
-  FOR ALL TO postbro_app
-  USING (account_id = NULLIF(current_setting('postbro.account_id', true), '')::bigint)
-  WITH CHECK (account_id = NULLIF(current_setting('postbro.account_id', true), '')::bigint);
-
-CREATE POLICY postbro_app_publish_jobs_account_scope ON postbro.publish_jobs
-  FOR ALL TO postbro_app
-  USING (account_id = NULLIF(current_setting('postbro.account_id', true), '')::bigint)
-  WITH CHECK (account_id = NULLIF(current_setting('postbro.account_id', true), '')::bigint);
-
 CREATE POLICY postbro_app_engagement_events_account_scope ON postbro.engagement_events
   FOR ALL TO postbro_app
   USING (account_id = NULLIF(current_setting('postbro.account_id', true), '')::bigint)
   WITH CHECK (account_id = NULLIF(current_setting('postbro.account_id', true), '')::bigint);
 
 CREATE POLICY postbro_app_engagement_proposals_account_scope ON postbro.engagement_proposals
+  FOR ALL TO postbro_app
+  USING (account_id = NULLIF(current_setting('postbro.account_id', true), '')::bigint)
+  WITH CHECK (account_id = NULLIF(current_setting('postbro.account_id', true), '')::bigint);
+
+CREATE POLICY postbro_app_engagement_jobs_account_scope ON postbro.engagement_jobs
   FOR ALL TO postbro_app
   USING (account_id = NULLIF(current_setting('postbro.account_id', true), '')::bigint)
   WITH CHECK (account_id = NULLIF(current_setting('postbro.account_id', true), '')::bigint);

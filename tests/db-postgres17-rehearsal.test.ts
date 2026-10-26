@@ -22,17 +22,16 @@ const REQUIRED_TABLES = [
   'personas',
   'persona_versions',
   'persona_bindings',
-  'drafts',
-  'publish_jobs',
   'engagement_events',
   'engagement_proposals',
+  'engagement_jobs',
   'approvals',
   'execution_attempts',
   'audit_events',
 ];
 const REQUIRED_INDEXES = [
   'oauth_sessions_operator_expiry',
-  'publish_jobs_due_pending',
+  'engagement_jobs_claimable',
   'approvals_one_pending_per_action',
   'audit_events_account_time',
 ];

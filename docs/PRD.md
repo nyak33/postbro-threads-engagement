@@ -10,12 +10,12 @@
 
 ## 1. Product definition
 
-**PostBro** is a standalone, Threads-only platform operated primarily from Telegram. It connects directly to Meta's official Threads API and enables multiple authorised Threads accounts to publish, schedule, manage replies, discover relevant conversations, inspect insights, and generate AI text using account-specific personas that improve through controlled feedback.
+**PostBro** is a Threads-only engagement automation backend operated primarily from Telegram. It connects directly to Meta's official Threads API for engagement on authorised accounts. Postiz exclusively owns posting and scheduling; PostBro has no Postiz runtime dependency. The Persona Engine and Reply Decision Engine remain separate components consumed by PostBro.
 
 ### 1.1 Objectives
 
 1. **Dogfood first:** reliably manage the owner's authorised Threads test accounts before any customer rollout.
-2. **One product:** publishing, scheduling, engagement, persona and analytics are modules of the same TypeScript application. No dependency on Postiz.
+2. **Engagement-only product:** PostBro handles inbound engagement automation for owned Threads posts/replies. Postiz owns publishing and scheduling; PostBro does not implement a posting or scheduling module.
 3. **Useful AI without spam:** skip irrelevant engagement; use human review by default; obey API permissions, rate limits and account-specific safety limits.
 4. **Persona consistency:** learn from historical authentic posts, approved revisions and explicit feedback, while protecting each account's identity from uncontrolled drift.
 5. **Low operational complexity:** Telegram first, minimal OAuth web endpoints, one VPS, hosted Supabase and a configurable cloud LLM.
@@ -23,8 +23,8 @@
 ### 1.2 Success criteria for first usable release
 
 - At least one permitted Threads tester account can connect via real OAuth, disconnect/reconnect, and refresh its own token.
-- From Telegram, an authorised operator can draft, approve, publish, and schedule a text post; actual Meta result and permalink are stored.
-- Scheduled jobs survive process restart, use correct timezone conversion and do not intentionally retry uncertain remote sends without reconciliation.
+- From Telegram, an authorised operator can review, approve, reject or edit a proposed Threads reply; the actual Meta reply result and permalink/context are stored.
+- Engagement execution jobs survive process restart and do not intentionally retry uncertain remote replies without reconciliation.
 - PostBro discovers a real reply on an owned Threads post, drafts a persona-aligned response, obtains Telegram approval and sends once.
 - Each connected account resolves to its own verified persona and cannot accidentally use another account's credentials/history.
 - Audit trail can answer: which account, what action, who authorised it, model output, result and when.
@@ -33,7 +33,7 @@
 ### 1.3 Out of scope / deferred
 
 - Instagram, Facebook Pages or any non-Threads platform.
-- Postiz as runtime dependency or source of truth for schedules.
+- Any PostBro posting or scheduling module; Postiz owns those capabilities. Postiz is not a runtime dependency.
 - Commercial billing, organisations/team permissions and full customer self-service onboarding.
 - Large web dashboard / visual calendar (later); only a minimal secure account-connection web flow is needed.
 - Threads DM read/send automation until a supported **official public API** and necessary permissions are positively verified.
@@ -61,9 +61,9 @@
 
 ### 2.2 Definitions
 
-- **Manual:** operator requests proposals and explicitly approves every send/publish action.
-- **Semi-Auto (default):** system proactively observes and drafts; operator explicitly approves every externally visible reply/post action. Scheduled post approval occurs when scheduling, not again at execution unless user policy requires it.
-- **Full-Auto:** system may execute only **pre-authorised, low-risk, eligible** actions under strict account limits; uncertain/high-risk cases still go to review. New accounts start in Semi-Auto.
+- **Manual:** operator requests engagement proposals and explicitly approves every reply action.
+- **Semi-Auto (default):** system proactively observes inbound engagement and drafts replies; operator explicitly approves every externally visible reply action.
+- **Full-Auto:** system may execute only **pre-authorised, low-risk, eligible** reply actions under strict account limits; uncertain/high-risk cases still go to review. New accounts start in Semi-Auto. Full-Auto authorization policy is implemented and tested separately.
 - **Source account:** connected Threads identity confirmed by the provider, keyed by immutable provider ID, not username alone.
 - **Persona:** stable base profile + per-surface context overrides + approved learned guidance; separate version history.
 - **Learning candidate:** evidence-backed proposed change, not an automatically active instruction.
@@ -75,19 +75,19 @@
 ### 3.1 Components
 
 **User layer**
-- Telegram Gateway: authenticated /start, menus, posting requests, media, approval keyboards, status and insights.
+- Telegram Gateway: authenticated /start, menus, engagement inbox, approval keyboards, status and insights.
 - Minimal HTTPS OAuth UI: starts signed account link flow; receives callback; associates Meta account with previously authenticated Telegram operator.
 
 **PostBro backend (TypeScript / Fastify)**
 - Identity/Auth: OAuth state, token exchange/refresh, capability checks and account selection.
 - Account + Persona: verified bindings, onboarding, context resolution.
-- Publishing: drafts, text/media publication, per-account scheduling queue.
 - Engagement: owned-post inbound polling; decision scoring; safe reply executor; outward conversation discovery only where authorised.
+- Postiz boundary: PostBro stores no post drafts, publishing queue or schedule state.
 - Discovery: official keyword search and opportunity filtering where permitted.
 - Insights: supported post/account metrics, snapshots and digest.
 - Learning: historical data importer, observation extraction, semantic grouping, reflection, eval, candidate review/versioning.
 - Approval: Telegram callback handlers, edit sessions, durable state transitions and logs.
-- Workers: schedule execution, token refresh, reply sync, learning and insights collection.
+- Workers: engagement reply sync/execution, token refresh, learning and insights collection.
 
 **External systems**
 - Official Meta Threads API, Telegram Bot API, hosted Supabase (DB + media), cloud LLM.
@@ -104,7 +104,7 @@
 ### 3.3 Ownership and separation
 
 - Threads API is the source of truth for whether a post/reply exists.
-- Supabase is the source of truth for intent, drafts, schedules, actions, approvals and history.
+- Supabase is the source of truth for engagement intent, proposals, actions, approvals, execution attempts and history.
 - PRD is the source of truth for intended behaviour.
 - Telegram is a **control surface**, not durable storage.
 - The LLM proposes content, classifications and learning; deterministic code decides permissions, account identity, thresholds, limits and execution.
@@ -129,26 +129,23 @@ Each item below requires implementation, test evidence and acceptance against th
 | ID | Priority | Requirement | Acceptance criteria |
 |---|---|---|---|
 | TG-01 | P0 | Bot created through BotFather; restrict access by Telegram User ID | Unknown user cannot view data or trigger actions |
-| TG-02 | P1 | Menu: Create Post, Scheduled, Engagement Inbox, Discovery, Insights, Accounts, Persona, Settings | Controls route to real handlers; disabled features clearly marked |
-| TG-03 | P1 | Proposal card with account, source, draft, reason, and inline Approve / Edit / Regenerate / Reject | Each button has persisted action ID; callback answers promptly |
-| TG-04 | P1 | Edit-session flow and regenerated preview followed by final approval | Only original operator may edit; edit session expires; new draft must be reconfirmed |
+| TG-02 | P1 | Menu: Engagement Inbox, Accounts, Persona, Settings; Discovery/Insights only when separately enabled | Controls route to real handlers; disabled features clearly marked |
+| TG-03 | P1 | Proposal card with account, source reply, proposed response, reason, and inline Approve / Edit / Regenerate / Reject | Each button has persisted action ID; callback answers promptly |
+| TG-04 | P1 | Edit-session flow and regenerated preview followed by final approval | Only original operator may edit; edit session expires; new proposal version must be reconfirmed |
 | TG-05 | P1 | Clear QUEUED / SENT / FAILED / SKIPPED state and provider permalink | No SENT display until provider outcome confirmed |
 | TG-06 | P1 | Repeated callbacks cannot trigger duplicate remote actions | Atomic approval state transitions + idempotent execution |
 | TG-07 | P2 | Daily digest, queue status and actionable errors | User can distinguish failed/retrying vs completed actions |
 
-**Posting policy:** creating a draft never publishes. Publish Now requires confirmation unless the operator has expressly opted into a trusted auto-post policy. Scheduling requires confirmation once; the worker executes without another Telegram prompt when due.
+**Engagement execution policy:** a generated reply proposal never sends by itself. Manual and Semi-Auto require an approved current proposal before an engagement job is created. Full-Auto is a separate opt-in policy and is not part of the foundation migration.
 
-### 4.3 Publishing and scheduling
+### 4.3 Engagement execution
 
 | ID | Priority | Requirement | Acceptance criteria |
 |---|---|---|---|
-| PUB-01 | P1 | Text draft, preview, edit, publish now | Test account publishes and stores real Threads ID/permalink |
-| PUB-02 | P1 | Durable future schedule with timezone, edit, cancel and list | Future post executes after backend restart; cancellation prevents send |
-| PUB-03 | P1 | Worker jobs: pending -> claimed -> processing -> confirmed/failed/needs_reconciliation | Concurrent workers cannot claim same queued job |
-| PUB-04 | P1 | Retry transient errors conservatively with backoff and rate-limit handling | No blind retry after ambiguous Meta publish outcome; reconcile first |
-| PUB-05 | P2 | Single image / video / carousel creation + required container readiness checks | Publish media only after accessible URL and container is ready |
-| PUB-06 | P2 | Threaded/multi-post sequences if supported by current official API | Explicit constraints documented and tested; partial failure reported |
-| PUB-07 | P2 | Draft versioning and media previews | Operator can see exact proposed content before confirmation |
+| EXEC-01 | P1 | Approved engagement proposal creates one durable reply execution job | Pending, rejected, expired or superseded approvals cannot create a job |
+| EXEC-02 | P1 | Engagement jobs: pending -> claimed -> processing -> confirmed/failed/needs_reconciliation | Concurrent workers cannot claim the same job |
+| EXEC-03 | P1 | Retry transient reply errors conservatively with backoff and rate-limit handling | No blind retry after ambiguous Meta reply outcome; reconcile first |
+| EXEC-04 | P1 | Duplicate action prevention | The same approved action key cannot enqueue or execute twice |
 
 ### 4.4 Inbound reply engagement
 
@@ -185,7 +182,7 @@ Keyword results are **not** guaranteed to be a comprehensive â€œtrending chart.â
 
 | ID | Priority | Requirement | Acceptance criteria |
 |---|---|---|---|
-| PER-01 | P0 | Port existing Persona Engine (Quick/Deep interview, base, context overrides, compilation) | Existing test cases pass after adaptation |
+| PER-01 | P0 | Consume the existing external Persona Engine through a minimal account/persona binding contract | PostBro stores only the binding/reference needed for fail-closed engagement authorization; no second persona-learning system is implemented |
 | PER-02 | P0 | Verified account -> persona binding; keep separate active versions and preferences | Fail closed on no binding/disconnection |
 | PER-03 | P1 | Apply surface-specific guidance to post vs reply generation | Identical account can have distinct post/reply styles |
 | PER-04 | P2 | Import accessible **account-owned** historical posts/replies with provenance and authorship tags | User reviews proposed initial persona; no unsupported API access or unconsented third-party history ingestion |
@@ -206,7 +203,7 @@ Keyword results are **not** guaranteed to be a comprehensive â€œtrending chart.â
 - **Semi-Auto:** monitor/draft automatically, but human must approve actual replies.
 - **Full-Auto:** only opted-in accounts, supported API operations and low-risk eligible categories; limits, cooldown, duplicate checks and global kill switch are mandatory.
 - API failure, identity ambiguity, missing token, low confidence or high-risk content must never bypass review.
-- Per-account feature switches: inbound, outbound, scheduling, insights collection, learning, digest.
+- Per-account feature switches: inbound engagement, outbound engagement, insights collection, learning and digest. Posting/scheduling switches belong to Postiz, not PostBro.
 
 ### 4.9 Threads DMs
 
@@ -220,17 +217,16 @@ Keyword results are **not** guaranteed to be a comprehensive â€œtrending chart.â
 2. PostBro issues short-lived signed account-link session and OAuth URL.
 3. User authorises in Threads; HTTPS callback verifies state and exchanges token.
 4. Backend retrieves immutable Threads account ID and granted scopes, encrypts token, stores connection.
-5. Operator selects or creates persona. Account cannot publish until a valid persona binding exists.
+5. Operator selects or creates persona. Account cannot reply until a valid persona binding exists.
 6. Bot shows connected status and capability summary; disconnect supported.
 
-### 5.2 Post now or schedule
+### 5.2 Approved engagement reply execution
 
-1. Operator selects account, asks for a post or supplies own copy.
-2. Persona resolver compiles correct post guidance; LLM generates only when requested.
-3. Bot presents final text/media preview; user chooses Publish Now or Schedule / Edit / Cancel.
-4. Confirmation atomically saves publishing intent; scheduled job persisted with UTC due time.
-5. Worker claims job, validates connection/limits, publishes to Meta; records provider ID and final status.
-6. On ambiguous network failure mark needs_reconciliation, seek remote evidence before manual/retry action.
+1. Operator approves a current engagement proposal from Telegram.
+2. Approval transition is atomic and bound to operator, account, action key and proposal version.
+3. Only a valid approved proposal creates one durable engagement job; duplicate action keys are rejected.
+4. Worker claims the engagement job, validates connection/limits and sends the reply through the official Threads API.
+5. Worker records provider result; ambiguous network failure becomes needs_reconciliation before any retry.
 
 ### 5.3 Inbound reply approval
 
@@ -262,8 +258,7 @@ Keyword results are **not** guaranteed to be a comprehensive â€œtrending chart.â
 | persona_bindings | One active persona per provider account; verified identity |
 | persona_observations | Per-source evidence with originality/quality labels |
 | learning_candidates | Statement, evidence IDs, confidence, state and evaluation |
-| posts / drafts | Account-scoped content, previews, origin and versions |
-| publish_jobs | Scheduled UTC execution time, claim lease, attempt state, uniqueness key |
+| engagement_jobs | Approved reply execution state, next retry time, claim lease, attempt state and uniqueness key |
 | engagement_events | Provider reply ID unique per account; context + classification |
 | engagement_proposals | Proposed text, reasons, confidence and lifecycle |
 | approvals / edit_sessions | Telegram user/message mapping, one-time action, expiry and edits |
@@ -272,7 +267,7 @@ Keyword results are **not** guaranteed to be a comprehensive â€œtrending chart.â
 | insights_snapshots | Provider metric time series and availability |
 | audit_events | Operator/system actions, account, reason, timestamp and outcome |
 
-All tables must be account-scoped where applicable. Use database constraints/transactional claim functions for uniqueness and state transitions. Tokens encrypted at the application boundary; do not store sensitive token values in audit or analytics records. Define migrations before implementing job scheduling.
+All tables must be account-scoped where applicable. Use database constraints/transactional claim functions for uniqueness and state transitions. Tokens encrypted at the application boundary; do not store sensitive token values in audit or analytics records. Define migrations before implementing engagement execution workers.
 
 ## 7. External integrations: what to obtain, what to build, how to verify
 
@@ -281,7 +276,7 @@ Full click-through checklist: [SETUP.md](SETUP.md). **Never paste secrets into G
 | Subsystem | Obtain from owner/setup | Build/configure | Proof of completion |
 |---|---|---|---|
 | **Meta Threads App** | Threads App ID, Threads App Secret; app configured for Threads, app/tester roles; stable allowed OAuth redirect URI | OAuth state, code exchange, long-lived token/refresh, encrypted per-account storage, capability handling | Real test account signs in; account ID & grants verified; token refresh/reconnect test |
-| **Meta permissions** | Request/grant only needed scopes: threads_basic, threads_content_publish, threads_read_replies, threads_manage_replies, threads_manage_insights; threads_keyword_search when available/approved | Per-feature capability checks; graceful denial | Publishing/replies/insights smoke tests; discovery not enabled until capability verified |
+| **Meta permissions** | Request/grant only needed engagement scopes: threads_basic plus the currently verified official reply read/manage scopes; insights and keyword search only when those features are implemented/approved. Revalidate whether any publishing scope is needed for reply creation before requesting it. | Per-feature capability checks; graceful denial | Reply/insights smoke tests; discovery not enabled until capability verified |
 | **Telegram** | New bot token from @BotFather, approved Telegram User ID(s); optional secure webhook secret | Bot commands/menu, callbacks, allowlist, webhook (production) or polling (development), approval state machine | /start from allowed ID works; unapproved ID denied; callback double-click safe |
 | **Supabase** | Dedicated/existing project choice, project URL, new server-side secret API key, private database connection URL for migrations, Storage bucket name | Tables/migrations, RLS/least-privilege design, storage policies, connection, encrypted token columns | API + DB tests, storage read/write test, unauthorised access denied |
 | **Cloud LLM** | Provider choice, endpoint if non-default, model IDs and API key | Provider adapter, structured outputs, scoring, generation, timeout/fallback, prompt/version logs | Deterministic mock and one real provider smoke test |
@@ -304,7 +299,7 @@ Expected environment variables are maintained exactly in [../.env.example](../.e
 - **Supabase:** SUPABASE_URL, SUPABASE_SECRET_KEY, DATABASE_URL (migrations), DATABASE_SSL_MODE, DATABASE_SSL_CA_PATH, SUPABASE_STORAGE_BUCKET; SUPABASE_PUBLISHABLE_KEY optional.
 - **Security:** TOKEN_ENCRYPTION_KEY (32-byte random key), APP_SIGNING_SECRET.
 - **LLM:** LLM_PROVIDER, LLM_API_KEY, LLM_MODEL, LLM_BASE_URL if needed.
-- **Workers:** PUBLISH_POLL_INTERVAL_SECONDS, REPLY_POLL_INTERVAL_SECONDS, AUTO_ENGAGEMENT_ENABLED=false, DEFAULT_AUTOMATION_MODE=semi_auto.
+- **Workers:** ENGAGEMENT_JOB_POLL_INTERVAL_SECONDS, REPLY_POLL_INTERVAL_SECONDS, AUTO_ENGAGEMENT_ENABLED=false, DEFAULT_AUTOMATION_MODE=semi_auto.
 
 Environment names are a **proposed interface**, not proof that an application already reads them. When implementation differs, update this contract and template together.
 
@@ -313,11 +308,10 @@ Environment names are a **proposed interface**, not proof that an application al
 | Phase | Deliverables | Exit gate |
 |---|---|---|
 | **P0 / Documentation & foundation** | PRD, setup contract, repo scaffolding, CI, database migrations, OAuth and authz | Real tester connects safely; account-persona binding resolves; security tests pass |
-| **P1A / Publishing** | Telegram draft/preview, text publish-now, durable scheduling, basic status | Scheduled text post publishes once and survives restart |
-| **P1B / Inbound engagement** | Reply sync, persona-based decision, approval buttons, send with idempotency, audit | Real comment -> approved reply -> one confirmed Threads reply |
+| **P1 / Inbound engagement** | Reply sync, persona-based decision, approval buttons, durable reply execution with idempotency, audit | Real comment -> approved reply -> one confirmed Threads reply |
 | **P1C / Basic insights** | Supported account/post metrics and bot status | Real metrics fetched without fabricated values |
 | **P2A / Persona learning** | Historical import, feedback capture, observation/reflection, evaluations, approval/version rollback | Persona update is evidenced, user approved, and reproducibly evaluated |
-| **P2B / Extended Threads** | Media posting, discovery, outbound permissions smoke test, multi-account controls | Each feature enabled only after actual capability test |
+| **P2B / Extended Threads** | Permission-gated discovery, outbound engagement permissions smoke test, multi-account controls | Each feature enabled only after actual capability test |
 | **Future / Productisation** | Optional web dashboard, team roles, customer auth, App Review, DM reassessment | Separate PRD revision |
 
 **Milestone order is binding unless changed in the PRD; no unreviewed features should be represented as completed.**
@@ -329,9 +323,9 @@ Environment names are a **proposed interface**, not proof that an application al
 - Encrypt per-account user access tokens at rest. Rotatable key and safe reconnect process required.
 - Telegram callbacks are authorised server-side and tied to operator, intended account and immutable action ID. Reject stale/expired, replayed or mismatched callbacks.
 - Bounded retry/backoff with remote reconciliation for ambiguous send outcomes. Respect Meta API limits. Use atomic DB claims; don't rely on process-local memory.
-- Explicit per-account opt-in for Full-Auto; pause switch and daily caps; never silently publish AI proposals from external inputs.
+- Explicit per-account opt-in for Full-Auto; pause switch and daily caps; never silently send AI proposals from external inputs.
 - Historical data ingestion limited to provider-authorised scope, with identifiable authorship, retention and deletion mechanism. Treat third-party comments as untrusted prompt input.
-- Store UTC timestamps, convert to chosen user timezone for display and scheduling.
+- Store UTC timestamps, convert to chosen user timezone for display; posting schedule display remains with Postiz.
 - Emit structured logs (with redaction), job attempt metadata, connector health, token refresh alerts, error summaries and backup/recovery procedure.
 - Unit tests for persona resolution, thresholds, state transitions, date/time and permissions. Integration tests use mocks first and a dedicated real tester account thereafter. Promptfoo fixtures check behavioural regressions.
 
@@ -340,9 +334,9 @@ Environment names are a **proposed interface**, not proof that an application al
 1. Unknown Telegram user cannot operate PostBro.
 2. OAuth forged/replayed state rejected; test account token stored encrypted.
 3. Two accounts cannot accidentally share persona or tokens.
-4. Scheduled job not lost after restart; cancelling before execution prevents publishing.
-5. Repeated Approve presses result in one execution.
-6. Ambiguous publish failure does not auto-create duplicate post.
+4. Engagement job not lost after restart; cancelling before execution prevents reply sending.
+5. Repeated Approve presses result in one engagement job/execution.
+6. Ambiguous reply failure does not auto-create duplicate reply.
 7. Persona observation cannot activate without explicit approval.
 8. Disabled API permission displays actionable, non-misleading error.
 9. Credentials do not appear in the Git tree or application logs.
@@ -355,7 +349,7 @@ Environment names are a **proposed interface**, not proof that an application al
 | Meta scopes, API limits and third-party reply access change | Validate per capability against official current docs and a live tester token; gate unverified flows |
 | Threads DM API not verifiably public | HOLD; no browser automation or fake promise |
 | Credential leaks | Server-side storage, encryption, least privilege, rotations, no actual secrets in repository |
-| Scheduled duplicate posts after crash/network timeout | DB claims and reconciliation before retry |
+| Duplicate replies after crash/network timeout | DB engagement-job claims and reconciliation before retry |
 | AI produces unnatural, repetitive or risky replies | Human approval default, persona grounding, quality evaluation, limits and skip mode |
 | Learning overfits likes or AI-generated history | Provenance labels, independent evidence, human review and rollback |
 | Scope/complexity grows before usable MVP | Complete P0 and P1 text post + inbound approval before trend/memory optimisations |

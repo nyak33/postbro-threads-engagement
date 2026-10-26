@@ -65,8 +65,8 @@ Use only a database you are authorized to reset. Do not use a hosted or populate
 - Account-scoped tables, foreign keys, uniqueness, checks and default UTC timestamps exist.
 - Operator → account → active persona binding authorization fails closed for missing, disabled, revoked or cross-account combinations.
 - RLS is enabled on foundation tables. The synthetic `postbro_anon` role has no schema/table access; the synthetic app role sees no account rows unless a transaction sets the server-side account context.
-- One due job can be claimed by only one concurrent worker; stale lease tokens cannot finalize; expired claimed jobs with no persisted provider attempt may be reclaimed with a new lease, while expired jobs with any persisted provider attempt are moved to `needs_reconciliation` instead of being blindly resent.
-- Approval transitions are atomic compare-and-swap and re-check operator/account/binding plus the still-current proposal or draft version in the same transaction; replay, expired, stale-source and superseded approvals do not authorize.
+- One due engagement job can be claimed by only one concurrent worker; stale lease tokens cannot finalize; expired claimed jobs with no persisted provider attempt may be reclaimed with a new lease, while expired jobs with any persisted provider attempt are moved to `needs_reconciliation` instead of being blindly resent.
+- Approval transitions are atomic compare-and-swap and re-check operator/account/binding plus the still-current engagement proposal version in the same transaction; replay, expired, stale-source and superseded approvals do not authorize. Only an approved current proposal can create an engagement job.
 - Hashed OAuth state is operator-bound, expiring and single-use.
 - Duplicate engagement provider IDs are rejected within one account but isolated across accounts.
 - Execution attempt action/attempt uniqueness is enforced; provider request/response metadata, job error reasons and audit reason/metadata are recursively redacted before persistence.
@@ -74,11 +74,13 @@ Use only a database you are authorized to reset. Do not use a hosted or populate
 
 ## Deferred PRD entities
 
-Implemented in this slice: `operators`, `oauth_sessions`, `threads_accounts`, `operator_accounts`, `personas`, `persona_versions`, `persona_bindings`, `drafts`, `publish_jobs`, `engagement_events`, `engagement_proposals`, `approvals`, `execution_attempts`, `audit_events`.
+Implemented in this slice: `operators`, `oauth_sessions`, `threads_accounts`, `operator_accounts`, `personas`, `persona_versions`, `persona_bindings`, `engagement_events`, `engagement_proposals`, `engagement_jobs`, `approvals`, `execution_attempts`, `audit_events`. Posting drafts and publish scheduling are owned by Postiz and are not PostBro tables.
 
-Deferred until their own scoped tasks: `posts` as separate published-post history, `edit_sessions`, `persona_observations`, `learning_candidates`, `discovery_results`, `insights_snapshots`, media/storage workflows, real OAuth token exchange/encryption, production workers and hosted Supabase verification. Current approvals are intentionally limited to a linked engagement proposal or draft so orphaned authorization rows are rejected; future action types need a reviewed schema amendment.
+Deferred until their own scoped tasks: `posts` as separate published-post history, `edit_sessions`, `persona_observations`, `learning_candidates`, `discovery_results`, `insights_snapshots`, media/storage workflows, real OAuth token exchange/encryption, production workers and hosted Supabase verification. Current approvals are intentionally limited to a linked engagement proposal so orphaned authorization rows are rejected; future action types need a reviewed schema amendment.
 
 ## Migration failure recovery
+
+This engagement-only correction intentionally rewrites the pre-first-hosted-migration foundation file. Any local/disposable database initialized from the earlier posting/scheduling foundation must be destroyed and recreated; the application runner will fail checksum validation by design rather than upgrading that obsolete local schema. Hosted `postbro-core` had no `postbro` schema before this correction, so no hosted forward migration is required or authorized.
 
 - Test database: stop the test process; the harness uses a temporary directory and removes it after the run. Re-run `npm test` for a clean cluster.
 - Manual disposable database: stop the database, delete/recreate the disposable cluster or database, then re-run `npm run db:migrate` from the clean state.
