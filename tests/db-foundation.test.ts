@@ -387,6 +387,26 @@ test('DB-04/DB-06: app role cannot execute direct unapproved, stale or revoked e
   await pg.ownerPool.query(`UPDATE postbro.engagement_jobs SET status = 'cancelled', updated_at = now() WHERE id = $1`, [revokedJobId]);
 });
 
+test('DB-04 regression: invalid earlier engagement jobs do not starve valid approved jobs', async () => {
+  const invalidJobId = await insertEngagementJobDirectApp(fixture.accountA, fixture.operatorOne, `invalid-first-${randomUUID()}`);
+  await pg.ownerPool.query(`UPDATE postbro.engagement_jobs SET next_attempt_at = now() - interval '10 minutes' WHERE id = $1`, [invalidJobId]);
+
+  const revokedJobId = await createEngagementJob(fixture.accountA, fixture.operatorOne, `revoked-first-${randomUUID()}`);
+  await pg.ownerPool.query(
+    `UPDATE postbro.engagement_proposals
+     SET status = 'superseded', updated_at = now()
+     WHERE id = (SELECT proposal_id FROM postbro.engagement_jobs WHERE id = $1)`,
+    [revokedJobId],
+  );
+
+  const validJobId = await createEngagementJob(fixture.accountA, fixture.operatorOne, `valid-behind-${randomUUID()}`);
+  const claim = await claimDueEngagementJob(appPool, fixture.accountA, 'worker-mixed-queue');
+  assert.equal(claim?.id, validJobId);
+  assert.equal(await completeClaimedEngagementJob(appPool, fixture.accountA, validJobId, claim!.leaseToken, 'confirmed'), true);
+
+  await pg.ownerPool.query(`UPDATE postbro.engagement_jobs SET status = 'cancelled', updated_at = now() WHERE id IN ($1, $2)`, [invalidJobId, revokedJobId]);
+});
+
 test('DB-06: hashed OAuth state is operator-bound, expiring and single-use', async () => {
   const stateHash = randomBytes(32);
   const expiredHash = randomBytes(32);

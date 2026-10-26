@@ -154,7 +154,7 @@ export async function claimDueEngagementJob(pool: Pool, accountId: number, worke
       [accountId],
     );
 
-    const candidate = await client.query<{ id: string; operator_id: string }>(
+    const candidates = await client.query<{ id: string; operator_id: string }>(
       `SELECT p2.id, p2.operator_id
        FROM postbro.engagement_jobs p2
        WHERE p2.account_id = $1::bigint
@@ -171,47 +171,46 @@ export async function claimDueEngagementJob(pool: Pool, accountId: number, worke
              )
            )
          )
-       ORDER BY COALESCE(p2.lease_expires_at, p2.next_attempt_at), p2.id
-       LIMIT 1
-       FOR UPDATE SKIP LOCKED`,
+       ORDER BY COALESCE(p2.lease_expires_at, p2.next_attempt_at), p2.id`,
       [accountId],
     );
-    const candidateRow = candidate.rows[0];
-    if (!candidateRow) {
-      return null;
-    }
 
-    await setRlsContext(client, Number(candidateRow.operator_id), accountId);
-    const result = await client.query<{ id: string; attempts: number }>(
-      `UPDATE postbro.engagement_jobs ej
-       SET status = 'claimed',
-           claimed_by = $3,
-           lease_token = $4,
-           lease_expires_at = now() + interval '5 minutes',
-           attempts = ej.attempts + 1,
-           updated_at = now()
-       WHERE ej.account_id = $1::bigint
-         AND ej.id = $2::bigint
-         AND (
-           (ej.status = 'pending' AND ej.next_attempt_at <= now())
-           OR (
-             ej.status IN ('claimed', 'processing')
-             AND ej.lease_expires_at <= now()
-             AND NOT EXISTS (
-               SELECT 1
-               FROM postbro.execution_attempts ea
-               WHERE ea.account_id = ej.account_id
-                 AND ea.engagement_job_id = ej.id
+    for (const candidate of candidates.rows) {
+      await setRlsContext(client, Number(candidate.operator_id), accountId);
+      const result = await client.query<{ id: string; attempts: number }>(
+        `UPDATE postbro.engagement_jobs ej
+         SET status = 'claimed',
+             claimed_by = $3,
+             lease_token = $4,
+             lease_expires_at = now() + interval '5 minutes',
+             attempts = ej.attempts + 1,
+             updated_at = now()
+         WHERE ej.account_id = $1::bigint
+           AND ej.id = $2::bigint
+           AND (
+             (ej.status = 'pending' AND ej.next_attempt_at <= now())
+             OR (
+               ej.status IN ('claimed', 'processing')
+               AND ej.lease_expires_at <= now()
+               AND NOT EXISTS (
+                 SELECT 1
+                 FROM postbro.execution_attempts ea
+                 WHERE ea.account_id = ej.account_id
+                   AND ea.engagement_job_id = ej.id
+               )
              )
            )
-         )
-         ${ENGAGEMENT_JOB_AUTHZ_SQL}
-       RETURNING ej.id, ej.attempts`,
-      [accountId, candidateRow.id, workerId, leaseToken],
-    );
+           ${ENGAGEMENT_JOB_AUTHZ_SQL}
+         RETURNING ej.id, ej.attempts`,
+        [accountId, candidate.id, workerId, leaseToken],
+      );
+      const row = result.rows[0];
+      if (row) {
+        return { id: Number(row.id), leaseToken, attempts: row.attempts };
+      }
+    }
 
-    const row = result.rows[0];
-    return row ? { id: Number(row.id), leaseToken, attempts: row.attempts } : null;
+    return null;
   });
 }
 
