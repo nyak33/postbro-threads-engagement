@@ -1,6 +1,13 @@
 export type NodeEnvironment = 'development' | 'test' | 'production';
 export type DatabaseSslMode = 'disable' | 'require' | 'verify-ca' | 'verify-full';
 
+export interface ThreadsOAuthConfig {
+  appId: string;
+  appSecret: string;
+  redirectUri: string;
+  scopes: string[];
+}
+
 export interface AppConfig {
   nodeEnv: NodeEnvironment;
   port: number;
@@ -9,6 +16,11 @@ export interface AppConfig {
   databaseUrl?: string;
   databaseSslMode?: DatabaseSslMode;
   databaseSslCaPath?: string;
+  threadsOAuth?: ThreadsOAuthConfig;
+  tokenEncryptionKeyId?: string;
+  /** Raw 32-byte key, base64-encoded in env. Never logged. */
+  tokenEncryptionKey?: Buffer;
+  appSigningSecret?: string;
 }
 
 export class ConfigError extends Error {
@@ -122,6 +134,107 @@ export function parseConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     issues.push('DATABASE_SSL_CA_PATH is required when DATABASE_SSL_MODE is verify-ca or verify-full');
   }
 
+  // --- Threads OAuth config (PB-P0-003 slice A) ------------------------------
+  // Optional: when NO OAuth-related env vars are set, the module stays disabled
+  // and unrelated endpoints/tests run without Meta credentials. When ANY OAuth
+  // var is present, the full set must be present and valid (fail fast).
+  const threadsAppId = env.THREADS_APP_ID?.trim();
+  const threadsAppSecret = env.THREADS_APP_SECRET?.trim();
+  const threadsRedirectUriValue = env.THREADS_REDIRECT_URI?.trim();
+  const threadsScopesValue = env.THREADS_SCOPES?.trim();
+  const anyThreadsVarSet =
+    threadsAppId !== undefined ||
+    threadsAppSecret !== undefined ||
+    threadsRedirectUriValue !== undefined ||
+    threadsScopesValue !== undefined;
+
+  let threadsOAuth: ThreadsOAuthConfig | undefined;
+  if (anyThreadsVarSet) {
+    if (!threadsAppId) {
+      issues.push('THREADS_APP_ID is required when Threads OAuth is configured');
+    }
+    if (!threadsAppSecret) {
+      issues.push('THREADS_APP_SECRET is required when Threads OAuth is configured');
+    }
+    let redirectUri: URL | undefined;
+    if (!threadsRedirectUriValue) {
+      issues.push('THREADS_REDIRECT_URI is required when Threads OAuth is configured');
+    } else {
+      try {
+        redirectUri = new URL(threadsRedirectUriValue);
+        if (redirectUri.protocol !== 'https:') {
+          if (!(nodeEnvValue !== 'production' && isLocalDatabaseHost(redirectUri.hostname))) {
+            issues.push('THREADS_REDIRECT_URI must be an absolute HTTPS URL');
+          }
+        }
+      } catch {
+        issues.push('THREADS_REDIRECT_URI must be a valid absolute URL');
+      }
+    }
+    if (!threadsScopesValue) {
+      issues.push('THREADS_SCOPES is required when Threads OAuth is configured');
+    }
+    const scopes = (threadsScopesValue ?? '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0);
+    if (threadsScopesValue && !scopes.includes('threads_basic')) {
+      issues.push('THREADS_SCOPES must include threads_basic');
+    }
+    // In production the exact OAuth redirect URI must sit under the secure
+    // public origin, and that origin must itself be HTTPS.
+    if (nodeEnvValue === 'production' && redirectUri && redirectUri.protocol === 'https:') {
+      if (!publicBaseUrl) {
+        issues.push('PUBLIC_BASE_URL is required in production when Threads OAuth is configured');
+      } else if (!publicBaseUrl.startsWith('https://')) {
+        issues.push('PUBLIC_BASE_URL must use https in production when Threads OAuth is configured');
+      } else if (!redirectUri.toString().startsWith(publicBaseUrl)) {
+        issues.push('THREADS_REDIRECT_URI must start with PUBLIC_BASE_URL in production');
+      }
+    }
+    if (
+      threadsAppId &&
+      threadsAppSecret &&
+      redirectUri &&
+      scopes.length > 0
+    ) {
+      threadsOAuth = {
+        appId: threadsAppId,
+        appSecret: threadsAppSecret,
+        redirectUri: redirectUri.toString(),
+        scopes,
+      };
+    }
+  }
+
+  // --- Token encryption key ---------------------------------------------------
+  const tokenEncryptionKeyValue = env.TOKEN_ENCRYPTION_KEY?.trim();
+  const tokenEncryptionKeyIdValue = env.TOKEN_ENCRYPTION_KEY_ID?.trim();
+  let tokenEncryptionKey: Buffer | undefined;
+  if (tokenEncryptionKeyValue) {
+    try {
+      const decoded = Buffer.from(tokenEncryptionKeyValue, 'base64');
+      if (decoded.length !== 32) {
+        issues.push('TOKEN_ENCRYPTION_KEY must be base64 of exactly 32 bytes');
+      } else {
+        tokenEncryptionKey = decoded;
+      }
+    } catch {
+      issues.push('TOKEN_ENCRYPTION_KEY must be valid base64');
+    }
+    if (!tokenEncryptionKeyIdValue) {
+      issues.push('TOKEN_ENCRYPTION_KEY_ID is required when TOKEN_ENCRYPTION_KEY is set');
+    }
+  } else if (tokenEncryptionKeyIdValue) {
+    issues.push('TOKEN_ENCRYPTION_KEY_ID requires TOKEN_ENCRYPTION_KEY');
+  }
+
+  // --- Link-token signing secret ----------------------------------------------
+  const appSigningSecret = env.APP_SIGNING_SECRET?.trim();
+  if (appSigningSecret !== undefined && appSigningSecret.length > 0 && appSigningSecret.length < 32) {
+    issues.push('APP_SIGNING_SECRET must be at least 32 characters when set');
+  }
+
   if (issues.length > 0) {
     throw new ConfigError(issues);
   }
@@ -134,5 +247,11 @@ export function parseConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     ...(databaseUrl ? { databaseUrl } : {}),
     ...(databaseSslMode ? { databaseSslMode } : {}),
     ...(databaseSslCaPath ? { databaseSslCaPath } : {}),
+    ...(threadsOAuth ? { threadsOAuth } : {}),
+    ...(tokenEncryptionKey ? { tokenEncryptionKey } : {}),
+    ...(tokenEncryptionKeyIdValue && tokenEncryptionKey
+      ? { tokenEncryptionKeyId: tokenEncryptionKeyIdValue }
+      : {}),
+    ...(appSigningSecret ? { appSigningSecret } : {}),
   };
 }
