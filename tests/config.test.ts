@@ -118,7 +118,102 @@ test('parseConfig rejects production redirect URI outside PUBLIC_BASE_URL origin
         ...VALID_OAUTH_ENV,
         THREADS_REDIRECT_URI: 'https://other.example.com/auth/threads/callback',
       }),
-    (error: unknown) => error instanceof ConfigError && /THREADS_REDIRECT_URI must start with PUBLIC_BASE_URL/.test(error.message),
+    (error: unknown) => error instanceof ConfigError && /origin must match PUBLIC_BASE_URL/.test(error.message),
+  );
+});
+
+test('parseConfig rejects a malicious sibling host sharing the base string prefix', () => {
+  assert.throws(
+    () =>
+      parseConfig({
+        NODE_ENV: 'production',
+        PUBLIC_BASE_URL: 'https://app.example.com',
+        ...VALID_OAUTH_ENV,
+        THREADS_REDIRECT_URI: 'https://app.example.com.evil.test/auth/threads/callback',
+      }),
+    (error: unknown) => error instanceof ConfigError && /origin must match PUBLIC_BASE_URL/.test(error.message),
+  );
+});
+
+test('parseConfig rejects a deceptive sibling path that only shares a string prefix', () => {
+  assert.throws(
+    () =>
+      parseConfig({
+        NODE_ENV: 'production',
+        PUBLIC_BASE_URL: 'https://app.example.com/postbro',
+        ...VALID_OAUTH_ENV,
+        THREADS_REDIRECT_URI: 'https://app.example.com/postbro-evil/auth/threads/callback',
+      }),
+    (error: unknown) => error instanceof ConfigError && /origin must match PUBLIC_BASE_URL/.test(error.message),
+  );
+});
+
+test('parseConfig rejects a redirect URI on a different port than PUBLIC_BASE_URL', () => {
+  assert.throws(
+    () =>
+      parseConfig({
+        NODE_ENV: 'production',
+        PUBLIC_BASE_URL: 'https://app.example.com',
+        ...VALID_OAUTH_ENV,
+        THREADS_REDIRECT_URI: 'https://app.example.com:8443/auth/threads/callback',
+      }),
+    (error: unknown) => error instanceof ConfigError && /origin must match PUBLIC_BASE_URL/.test(error.message),
+  );
+});
+
+test('parseConfig accepts a redirect under PUBLIC_BASE_URL with and without trailing slash', () => {
+  for (const base of ['https://app.example.com/postbro', 'https://app.example.com/postbro/']) {
+    const config = parseConfig({
+      NODE_ENV: 'production',
+      PUBLIC_BASE_URL: base,
+      ...VALID_OAUTH_ENV,
+      THREADS_REDIRECT_URI: 'https://app.example.com/postbro/auth/threads/callback',
+    });
+    assert.equal(
+      config.threadsOAuth?.redirectUri,
+      'https://app.example.com/postbro/auth/threads/callback',
+    );
+  }
+});
+
+test('parseConfig accepts a redirect at the exact PUBLIC_BASE_URL path boundary', () => {
+  const config = parseConfig({
+    NODE_ENV: 'production',
+    PUBLIC_BASE_URL: 'https://app.example.com/auth/threads/callback',
+    ...VALID_OAUTH_ENV,
+    THREADS_REDIRECT_URI: 'https://app.example.com/auth/threads/callback',
+  });
+  assert.equal(config.threadsOAuth?.redirectUri, 'https://app.example.com/auth/threads/callback');
+});
+
+test('parseConfig rejects a redirect URI with credentials, query, or fragment', () => {
+  for (const bad of [
+    'https://user:pass@app.example.com/auth/threads/callback',
+    'https://app.example.com/auth/threads/callback?state=preseed',
+    'https://app.example.com/auth/threads/callback#frag',
+  ]) {
+    assert.throws(
+      () =>
+        parseConfig({
+          NODE_ENV: 'production',
+          PUBLIC_BASE_URL: 'https://app.example.com',
+          ...VALID_OAUTH_ENV,
+          THREADS_REDIRECT_URI: bad,
+        }),
+      (error: unknown) => error instanceof ConfigError && /THREADS_REDIRECT_URI/.test(error.message),
+    );
+  }
+});
+
+test('parseConfig rejects a PUBLIC_BASE_URL containing credentials', () => {
+  assert.throws(
+    () =>
+      parseConfig({
+        NODE_ENV: 'production',
+        PUBLIC_BASE_URL: 'https://user:pass@app.example.com',
+        ...VALID_OAUTH_ENV,
+      }),
+    (error: unknown) => error instanceof ConfigError && /PUBLIC_BASE_URL must not contain credentials/.test(error.message),
   );
 });
 

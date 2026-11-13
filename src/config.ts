@@ -54,6 +54,31 @@ function hasSslUrlParameters(url: URL): boolean {
   return false;
 }
 
+/**
+ * Canonical base path of a URL: pathname without trailing slashes ('/' -> '').
+ */
+function canonicalBasePath(url: URL): string {
+  return url.pathname.replace(/\/+$/, '');
+}
+
+/**
+ * True when `redirect` sits under `base`: identical origin (scheme, host,
+ * port — no credentials allowed) and redirect path equal to the base path or
+ * strictly below it on a '/' boundary. Compares parsed URL components, never
+ * raw string prefixes.
+ */
+function isUrlUnderBase(redirect: URL, base: URL): boolean {
+  if (redirect.origin !== base.origin) {
+    return false;
+  }
+  const basePath = canonicalBasePath(base);
+  if (redirect.pathname === basePath) {
+    return true;
+  }
+  const prefix = basePath === '' ? '/' : `${basePath}/`;
+  return redirect.pathname.startsWith(prefix);
+}
+
 export function parseConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   const issues: string[] = [];
 
@@ -75,12 +100,16 @@ export function parseConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
 
   const publicBaseUrlValue = env.PUBLIC_BASE_URL?.trim();
   let publicBaseUrl: string | undefined;
+  let publicBaseUrlParsed: URL | undefined;
   if (publicBaseUrlValue) {
     try {
       const parsed = new URL(publicBaseUrlValue);
       if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
         issues.push('PUBLIC_BASE_URL must use http or https');
+      } else if (parsed.username !== '' || parsed.password !== '') {
+        issues.push('PUBLIC_BASE_URL must not contain credentials');
       } else {
+        publicBaseUrlParsed = parsed;
         publicBaseUrl = parsed.toString();
       }
     } catch {
@@ -162,7 +191,13 @@ export function parseConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     } else {
       try {
         redirectUri = new URL(threadsRedirectUriValue);
-        if (redirectUri.protocol !== 'https:') {
+        if (redirectUri.username !== '' || redirectUri.password !== '') {
+          issues.push('THREADS_REDIRECT_URI must not contain credentials');
+        } else if (redirectUri.hash !== '') {
+          issues.push('THREADS_REDIRECT_URI must not contain a fragment');
+        } else if (redirectUri.search !== '') {
+          issues.push('THREADS_REDIRECT_URI must not contain a query string');
+        } else if (redirectUri.protocol !== 'https:') {
           if (!(nodeEnvValue !== 'production' && isLocalDatabaseHost(redirectUri.hostname))) {
             issues.push('THREADS_REDIRECT_URI must be an absolute HTTPS URL');
           }
@@ -182,14 +217,16 @@ export function parseConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       issues.push('THREADS_SCOPES must include threads_basic');
     }
     // In production the exact OAuth redirect URI must sit under the secure
-    // public origin, and that origin must itself be HTTPS.
+    // public origin: same origin (scheme+host+port), HTTPS, and redirect path
+    // on or below the PUBLIC_BASE_URL path on a '/' boundary. Comparison uses
+    // parsed URL components, never string prefixes.
     if (nodeEnvValue === 'production' && redirectUri && redirectUri.protocol === 'https:') {
-      if (!publicBaseUrl) {
+      if (!publicBaseUrlParsed) {
         issues.push('PUBLIC_BASE_URL is required in production when Threads OAuth is configured');
-      } else if (!publicBaseUrl.startsWith('https://')) {
+      } else if (publicBaseUrlParsed.protocol !== 'https:') {
         issues.push('PUBLIC_BASE_URL must use https in production when Threads OAuth is configured');
-      } else if (!redirectUri.toString().startsWith(publicBaseUrl)) {
-        issues.push('THREADS_REDIRECT_URI must start with PUBLIC_BASE_URL in production');
+      } else if (!isUrlUnderBase(redirectUri, publicBaseUrlParsed)) {
+        issues.push('THREADS_REDIRECT_URI origin must match PUBLIC_BASE_URL and its path must stay under the PUBLIC_BASE_URL path in production');
       }
     }
     if (
