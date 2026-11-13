@@ -14,18 +14,29 @@ import type { Pool } from 'pg';
 
 import type { ThreadsOAuthClient } from '../../integrations/threads/oauth-client';
 import { ThreadsOAuthProviderError } from '../../integrations/threads/oauth-client';
+import type { TokenEncryptionKey } from '../../shared/token-crypto';
 import { CallbackSessionError, consumeCallbackSession } from './callback-session';
 import {
   LinkTokenError,
   consumeLinkToken,
   createOAuthSession,
 } from './oauth-state';
+import {
+  PersistOAuthCompletionError,
+  persistOAuthCompletion,
+} from './persist-oauth';
 
 export interface ThreadsAuthRouteDeps {
   pool: Pool;
   /** Server-side HMAC signing secret (APP_SIGNING_SECRET). Never exposed. */
   signingSecret: string;
   oauthClient: ThreadsOAuthClient;
+  /**
+   * AES-256-GCM key for encrypting token material before persistence.
+   * Required: the callback never stores plaintext and fails closed without
+   * a configured key.
+   */
+  tokenEncryptionKey: TokenEncryptionKey;
 }
 
 /**
@@ -80,12 +91,14 @@ export function registerThreadsAuthRoutes(app: FastifyInstance, deps: ThreadsAut
   /**
    * GET /auth/threads/callback?state=...&code=...
    *
-   * Slice D2a: resolves the initiating operator server-side from the state
-   * hash, consumes the state atomically, then runs the MOCK provider
-   * sequence exchangeCode -> exchangeLongLived -> getMe and verifies the
-   * immutable user id matches. NO account persistence happens here, so a
-   * fully mocked success returns status 'simulation_pending_persistence'
-   * (never a connected/success claim) and never exposes token material.
+   * Slice D2b2 (final): resolves the initiating operator server-side from
+   * the state hash, consumes the state atomically, runs the provider
+   * sequence exchangeCode -> exchangeLongLived -> getMe, verifies the
+   * immutable user id matches, then persists the account with AES-GCM
+   * encrypted token material atomically via persistOAuthCompletion. Only
+   * AFTER persistence success does it report status 'connected' with the
+   * account id and VERIFIED granted scopes. Tokens, client secret, signing
+   * secret and crypto key are never returned or logged.
    */
   app.get('/auth/threads/callback', async (request, reply) => {
     const query = request.query as Record<string, unknown>;
@@ -114,37 +127,54 @@ export function registerThreadsAuthRoutes(app: FastifyInstance, deps: ThreadsAut
       throw error;
     }
 
-    // Mock provider sequence (no network). Token material stays in memory
-    // and is never returned or logged.
-    let providerUserId: string;
-    let scopesVerified: boolean;
-    let grantedScopes: string[];
+    // Provider sequence (mock in tests; no network here). Token material
+    // stays in memory and is handed to persistence, which encrypts it.
+    let persisted;
     try {
       const shortLived = await deps.oauthClient.exchangeCode(code);
-      providerUserId = shortLived.userId;
       const longLived = await deps.oauthClient.exchangeLongLived(shortLived.accessToken);
       const identity = await deps.oauthClient.getMe(longLived.accessToken);
-      if (identity.id !== providerUserId) {
+      if (identity.id !== shortLived.userId) {
         return reply.code(502).send({ error: 'identity_mismatch' });
       }
-      const scopes = await deps.oauthClient.getGrantedScopes(longLived.accessToken);
       // Granted scopes are trusted ONLY from positively verified provider
       // evidence; requested scopes are never inferred as granted.
-      scopesVerified = scopes.verified;
-      grantedScopes = scopes.verified ? scopes.scopes : [];
+      const scopes = await deps.oauthClient.getGrantedScopes(longLived.accessToken);
+
+      persisted = await persistOAuthCompletion(deps.pool, {
+        operatorId,
+        exchangeUserId: shortLived.userId,
+        identityUserId: identity.id,
+        username: identity.username,
+        longLivedToken: longLived.accessToken,
+        tokenExpiresInSeconds: longLived.expiresInSeconds,
+        grantedScopes: scopes,
+        encryptionKey: deps.tokenEncryptionKey,
+      });
     } catch (error) {
       if (error instanceof ThreadsOAuthProviderError) {
         return reply.code(502).send({ error: 'provider_exchange_failed' });
+      }
+      if (error instanceof PersistOAuthCompletionError) {
+        // Fail closed with no row changes (the persistence transaction
+        // already rolled back) and a safe, non-misleading error.
+        if (error.reason === 'provider_owned_by_other_operator') {
+          return reply.code(403).send({ error: 'provider_owned_by_other_operator' });
+        }
+        if (error.reason === 'identity_mismatch') {
+          return reply.code(502).send({ error: 'identity_mismatch' });
+        }
+        return reply.code(401).send({ error: 'invalid_state' });
       }
       throw error;
     }
 
     return reply.code(200).send({
-      status: 'simulation_pending_persistence',
+      status: 'connected',
+      accountId: persisted.accountId,
       operatorId,
-      providerUserId,
-      scopesVerified,
-      grantedScopes,
+      scopesVerified: persisted.scopesVerified,
+      grantedScopes: persisted.grantedScopes,
     });
   });
 }

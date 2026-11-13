@@ -19,6 +19,8 @@ import {
 // Fixed dummy, non-real test-only values. The mock OAuth client performs no
 // I/O: no Meta, no network, no Telegram, disposable local Postgres only.
 const SIGNING_SECRET = 'dummy-signing-secret-for-tests-only-000000';
+// Test-only, non-real AES key for encrypted persistence assertions.
+const ENCRYPTION_KEY = { keyId: 'test-key-1', key: randomBytes(32) };
 const OAUTH_CONFIG = {
   appId: 'fake-app-id-123',
   appSecret: 'fake-app-secret-NOT-REAL',
@@ -42,7 +44,12 @@ async function createOperator(telegramUserId: number, status = 'active'): Promis
 
 function buildWithClient(oauthClient: MockThreadsOAuthClient): ReturnType<typeof buildApp> {
   const options: BuildAppOptions = {
-    threadsAuth: { pool: appPool, signingSecret: SIGNING_SECRET, oauthClient },
+    threadsAuth: {
+      pool: appPool,
+      signingSecret: SIGNING_SECRET,
+      oauthClient,
+      tokenEncryptionKey: ENCRYPTION_KEY,
+    },
   };
   return buildApp(options);
 }
@@ -98,9 +105,9 @@ test('callback: end-to-end D1 start -> fake Meta callback -> mocked exchanges ->
 
     assert.equal(response.statusCode, 200);
     const body = response.json() as Record<string, unknown>;
-    assert.equal(body.status, 'simulation_pending_persistence');
+    assert.equal(body.status, 'connected');
+    assert.equal(typeof body.accountId, 'number');
     assert.equal(body.operatorId, operatorId);
-    assert.equal(body.providerUserId, 'mock-threads-user-1');
     // Default mock scope evidence is UNVERIFIED — requested scopes are never
     // inferred as granted.
     assert.equal(body.scopesVerified, false);
@@ -132,7 +139,7 @@ test('callback: end-to-end D1 start -> fake Meta callback -> mocked exchanges ->
 });
 
 test('callback: replayed state is rejected and no provider calls occur', async () => {
-  const oauthClient = new MockThreadsOAuthClient({ config: OAUTH_CONFIG });
+  const oauthClient = new MockThreadsOAuthClient({ config: OAUTH_CONFIG, userId: 'mock-user-replay' });
   const app = buildWithClient(oauthClient);
   try {
     const operatorId = await createOperator(920002);
@@ -250,6 +257,7 @@ test('callback: immutable id mismatch between exchange and getMe is rejected', a
 test('callback: verified granted-scope evidence is reported as verified', async () => {
   const oauthClient = new MockThreadsOAuthClient({
     config: OAUTH_CONFIG,
+    userId: 'mock-user-verified-scopes',
     grantedScopes: { verified: true, scopes: ['threads_basic'] },
   });
   const app = buildWithClient(oauthClient);
@@ -264,8 +272,8 @@ test('callback: verified granted-scope evidence is reported as verified', async 
     const body = response.json() as Record<string, unknown>;
     assert.equal(body.scopesVerified, true);
     assert.deepEqual(body.grantedScopes, ['threads_basic']);
-    // Still no persistence claim.
-    assert.equal(body.status, 'simulation_pending_persistence');
+    // Connected only after persistence succeeded.
+    assert.equal(body.status, 'connected');
   } finally {
     await app.close();
   }

@@ -52,7 +52,12 @@ before(async () => {
   });
   oauthClient = new MockThreadsOAuthClient({ config: OAUTH_CONFIG });
   app = buildApp({
-    threadsAuth: { pool: appPool, signingSecret: SIGNING_SECRET, oauthClient },
+    threadsAuth: {
+      pool: appPool,
+      signingSecret: SIGNING_SECRET,
+      oauthClient,
+      tokenEncryptionKey: { keyId: 'test-key-1', key: randomBytes(32) },
+    },
   });
 });
 
