@@ -53,6 +53,7 @@ const REQUIRED_TABLES = [
   'approvals',
   'execution_attempts',
   'audit_events',
+  'link_token_nonces',
 ];
 
 let pg: EmbeddedPostgresTestContext;

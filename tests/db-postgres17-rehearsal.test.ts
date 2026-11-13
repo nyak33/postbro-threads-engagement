@@ -12,7 +12,13 @@ import { DEFAULT_MIGRATIONS_DIR, migrateDatabase } from '../src/db/migrate';
 
 const REHEARSAL_URL = process.env.POSTGRES_17_11_URL;
 const test17 = REHEARSAL_URL ? test : test.skip;
-const MIGRATION_FILE = '202610230001_database_foundation.sql';
+// The authoritative migration list is the on-disk directory contents, in the
+// same sorted order the runner applies them. Hard-coding a single filename
+// here made the rehearsal fail the moment any new migration was added.
+async function expectedMigrationFiles(): Promise<string[]> {
+  const files = await fs.readdir(path.join(process.cwd(), DEFAULT_MIGRATIONS_DIR));
+  return files.filter((file) => file.endsWith('.sql')).sort();
+}
 const REQUIRED_TABLES = [
   'schema_migrations',
   'operators',
@@ -106,14 +112,17 @@ async function verifyFoundationShape(pool: Pool): Promise<void> {
   assert.equal(grants.rows[0]!.app_schema, true);
 }
 
-async function verifyChecksum(pool: Pool): Promise<void> {
-  const sql = await fs.readFile(path.join(process.cwd(), DEFAULT_MIGRATIONS_DIR, MIGRATION_FILE), 'utf8');
-  const checksum = migrationChecksum(sql);
-  const ledger = await pool.query<{ checksum: string }>(
-    'SELECT checksum FROM postbro.schema_migrations WHERE version = $1',
-    [MIGRATION_FILE],
-  );
-  assert.equal(ledger.rows[0]!.checksum, checksum);
+async function verifyChecksums(pool: Pool, versions: string[]): Promise<void> {
+  const dir = path.join(process.cwd(), DEFAULT_MIGRATIONS_DIR);
+  for (const version of versions) {
+    const sql = await fs.readFile(path.join(dir, version), 'utf8');
+    const checksum = migrationChecksum(sql);
+    const ledger = await pool.query<{ checksum: string }>(
+      'SELECT checksum FROM postbro.schema_migrations WHERE version = $1',
+      [version],
+    );
+    assert.equal(ledger.rows[0]!.checksum, checksum, `checksum mismatch for ${version}`);
+  }
 }
 
 async function verifyConcurrentMigration(pool: Pool): Promise<void> {
@@ -126,12 +135,12 @@ async function verifyConcurrentMigration(pool: Pool): Promise<void> {
       migrateDatabase(concurrentPool, DEFAULT_MIGRATIONS_DIR),
       migrateDatabase(concurrentPool, DEFAULT_MIGRATIONS_DIR),
     ]);
-    assert.equal(results.reduce((count, applied) => count + applied.length, 0), 1);
+    const expectedTotal = (await expectedMigrationFiles()).length;
+    assert.equal(results.reduce((count, applied) => count + applied.length, 0), expectedTotal);
     const ledger = await concurrentPool.query<{ count: string }>(
-      'SELECT count(*) FROM postbro.schema_migrations WHERE version = $1',
-      [MIGRATION_FILE],
+      'SELECT count(*) FROM postbro.schema_migrations',
     );
-    assert.equal(Number(ledger.rows[0]!.count), 1);
+    assert.equal(Number(ledger.rows[0]!.count), expectedTotal);
   } finally {
     await concurrentPool.end();
     await pool.query('DROP DATABASE IF EXISTS postbro_rehearsal_concurrent');
@@ -199,12 +208,14 @@ async function verifyRuntimeIsolation(pool: Pool): Promise<void> {
 test17('PostgreSQL 17.11 disposable deployment rehearsal', async () => {
   const pool = new Pool({ connectionString: REHEARSAL_URL, max: 6 });
   try {
+    const expected = await expectedMigrationFiles();
+    assert.ok(expected.length >= 1, 'no migrations found in db/migrations');
     const applied = await migrateDatabase(pool, DEFAULT_MIGRATIONS_DIR);
-    assert.deepEqual(applied, [MIGRATION_FILE]);
+    assert.deepEqual(applied, expected);
     assert.deepEqual(await migrateDatabase(pool, DEFAULT_MIGRATIONS_DIR), []);
 
     await verifyFoundationShape(pool);
-    await verifyChecksum(pool);
+    await verifyChecksums(pool, expected);
     await verifyConcurrentMigration(pool);
     await verifyFailureRollback(pool);
     await verifyRuntimeIsolation(pool);
