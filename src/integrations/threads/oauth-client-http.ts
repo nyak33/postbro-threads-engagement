@@ -18,11 +18,19 @@
  *   (redirect: 'manual' — a redirect from the provider fails closed).
  * - Timeouts (AbortSignal.timeout) and a hard response size cap are enforced.
  * - Tokens are passed via the Authorization header wherever the provider
- *   supports it (Bearer on /me and the token-exchange GETs), never in URLs.
- * - Secrets (client_secret) are sent ONLY in POST form bodies / POST
- *   requests and never appear in URLs, logs or error messages.
- * - Provider errors are sanitized: no response bodies, tokens, codes, or
- *   secrets are ever embedded in thrown errors or logs.
+ *   supports it (Bearer on /me and the long-lived token GETs), never as
+ *   access_token URL parameters.
+ * - client_secret placement differs by endpoint per Meta's official docs:
+ *   the short-lived exchange (POST /oauth/access_token) carries it ONLY in
+ *   the form-encoded body, never in the URL; the long-lived/refresh
+ *   endpoint (GET /access_token) REQUIRES it as a URL query parameter —
+ *   that is Meta's documented contract and must not be "fixed" to POST.
+ *   Because query strings can leak via HTTP access logs, proxies, tracing
+ *   and crash reporters, NOTHING in this client (or its callers) may log
+ *   full request URLs or raw HTTP diagnostics; reverse-proxy/tracing for
+ *   these paths must stay off or redacted.
+ * - Provider errors are sanitized: no response bodies, tokens, codes, URLs
+ *   or secrets are ever embedded in thrown errors or logs.
  * - Granted scopes: there is NO authoritative Threads endpoint documented
  *   that enumerates granted scopes for a user token. Therefore
  *   getGrantedScopes() FAILS CLOSED: { verified: false, scopes: [] } always.
@@ -250,8 +258,12 @@ export class ThreadsHttpOAuthClient implements ThreadsOAuthClient {
 
   /**
    * GET https://graph.threads.net/access_token?grant_type=th_exchange_token&client_secret=...
-   * The short-lived token is passed via the Authorization header; client
-   * secret is required as a query parameter by the documented endpoint.
+   * Per Meta's documented contract, client_secret is REQUIRED here as a URL
+   * query parameter (unlike the POST short-lived exchange, where it travels
+   * only in the form body). The short-lived token itself is passed via the
+   * Authorization header. Because the URL contains the app secret, request
+   * URLs and raw HTTP diagnostics for this call must NEVER be logged, and
+   * proxy/tracing layers must keep this path redacted.
    */
   async exchangeLongLived(shortLivedToken: string): Promise<LongLivedTokenResult> {
     return this.getLongLived(shortLivedToken, 'th_exchange_token');

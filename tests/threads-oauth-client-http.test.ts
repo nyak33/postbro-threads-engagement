@@ -4,6 +4,7 @@ import test from 'node:test';
 import {
   THREADS_GRAPH_ORIGIN,
   ThreadsHttpOAuthClient,
+  ThreadsHttpTransportError,
   type HttpTransport,
   type HttpTransportRequest,
 } from '../src/integrations/threads/oauth-client-http';
@@ -197,13 +198,38 @@ test('getMe fails closed on missing id', async () => {
 });
 
 test('transport network failure maps to provider_unavailable and leaks nothing', async () => {
-  const failing: HttpTransport = () => Promise.reject(new Error('dns boom token=abc'));
+  const failing: HttpTransport = () =>
+    Promise.reject(new Error('dns boom token=abc client_secret=shh'));
   await assert.rejects(
     () => makeClient(failing).getMe('tok'),
     (e: unknown) => {
       assert.ok(e instanceof ThreadsOAuthProviderError);
       assert.equal(e.kind, 'provider_unavailable');
       assert.equal(e.message.includes('token=abc'), false);
+      assert.equal(e.message.includes('client_secret'), false);
+      return true;
+    },
+  );
+});
+
+test('transport errors never expose the request URL (may contain client_secret)', async () => {
+  // The long-lived GET URL necessarily contains client_secret (Meta's
+  // documented contract); a redirect/oversize/network failure must not
+  // propagate that URL through the thrown error.
+  const secretUrlProbe: HttpTransport = (req) => {
+    // Simulate a redirect failure carrying the URL (as a careless
+    // transport might); the client must wrap it sanitized.
+    return Promise.reject(
+      new ThreadsHttpTransportError('redirect', `unexpected redirect for ${req.url}`),
+    );
+  };
+  await assert.rejects(
+    () => makeClient(secretUrlProbe).exchangeLongLived('short-token'),
+    (e: unknown) => {
+      assert.ok(e instanceof ThreadsOAuthProviderError);
+      assert.equal(e.message.includes(CONFIG.appSecret), false);
+      assert.equal(e.message.includes('client_secret='), false);
+      assert.equal(e.message.includes('graph.threads.net'), false);
       return true;
     },
   );
